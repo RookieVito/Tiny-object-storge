@@ -1,0 +1,20 @@
+{
+  "port": 9000,
+  "backend_type": "ec",
+  "access_key": "minioadmin",
+  "secret_key": "minioadmin",
+  "max_body_size": 10485760,
+  "ec": {
+    "disks": [
+      "test/ec-data/disk-0",
+      "test/ec-data/disk-1",
+      "test/ec-data/disk-2",
+      "test/ec-data/disk-3",
+      "test/ec-data/disk-4",
+      "test/ec-data/disk-5"
+    ],
+    "data_shards": 4,
+    "parity_shards": 2,
+    "meta_root": "test/ec-data/meta"
+  }
+}

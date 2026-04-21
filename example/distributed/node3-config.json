@@ -1,0 +1,15 @@
+{
+  "port": 9003,
+  "root": "./data/node-3",
+  "backend_type": "distributed",
+  "distributed": {
+    "node_id": "localhost:9003",
+    "seed_nodes": ["http://localhost:9001"],
+    "replication_factor": 3,
+    "read_quorum": 2,
+    "write_quorum": 2,
+    "virtual_nodes": 500,
+    "gossip_interval_ms": 1000,
+    "rpc_timeout_ms": 3000
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "port": 9000,
+  "backend_type": "ec",
+  "ec": {
+    "disks": [
+      "./data/disk-0",
+      "./data/disk-1",
+      "./data/disk-2",
+      "./data/disk-3",
+      "./data/disk-4",
+      "./data/disk-5"
+    ],
+    "data_shards": 4,
+    "parity_shards": 2,
+    "meta_root": "./data/meta-root"
+  }
+}

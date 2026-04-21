@@ -1,0 +1,22 @@
+# 编译产物
+tiny-object-storage
+tiny-storage
+client
+server
+
+# 数据目录
+data/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code
+.claude/
+
+# Web UI 构建产物和依赖
+cmd/server/static/dist/
+web/node_modules/
+web/dist/

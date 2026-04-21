@@ -1,0 +1,251 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Base Reset ─── */
+*, *::before, *::after {
+  scrollbar-width: thin;
+  scrollbar-color: #3a3a6e #0a0a1a;
+}
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: #0a0a1a; }
+*::-webkit-scrollbar-thumb { background: #3a3a6e; border-radius: 3px; }
+*::-webkit-scrollbar-thumb:hover { background: #8b5cf6; }
+
+body {
+  @apply bg-void text-gray-200 antialiased overflow-x-hidden;
+  font-family: 'Rajdhani', sans-serif;
+}
+
+/* ─── Scanline Overlay ─── */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 240, 255, 0.015) 2px,
+    rgba(0, 240, 255, 0.015) 4px
+  );
+}
+
+/* ─── Grid Background ─── */
+.cyber-grid {
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ─── Mesh Gradient Background ─── */
+.cyber-mesh {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(0, 240, 255, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 40% 80%, rgba(255, 0, 229, 0.06) 0%, transparent 50%),
+    #0a0a1a;
+}
+
+/* ─── Glassmorphism Card ─── */
+.glass {
+  background: rgba(15, 15, 46, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 240, 255, 0.08);
+}
+
+.glass-bright {
+  background: rgba(15, 15, 46, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 240, 255, 0.12);
+}
+
+/* ─── Neon Input ─── */
+.neon-input {
+  @apply bg-abyss/80 text-gray-200 font-mono text-sm px-4 py-3 rounded-lg outline-none transition-all duration-300;
+  border: 1px solid rgba(58, 58, 110, 0.6);
+}
+.neon-input:focus {
+  border-color: #00f0ff;
+  box-shadow: 0 0 0 1px rgba(0, 240, 255, 0.2), 0 0 20px rgba(0, 240, 255, 0.1), inset 0 0 20px rgba(0, 240, 255, 0.03);
+}
+.neon-input::placeholder {
+  @apply text-gray-500 font-ui;
+}
+
+/* ─── Neon Button Base ─── */
+@layer components {
+  .btn-neon {
+    @apply relative font-ui font-semibold text-sm tracking-wide uppercase px-6 py-3 rounded-lg transition-all duration-300 overflow-hidden;
+    letter-spacing: 0.08em;
+  }
+
+  .btn-cyan {
+    @apply btn-neon text-void bg-neon-cyan hover:bg-cyan-300;
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.3), inset 0 0 15px rgba(0, 240, 255, 0.1);
+  }
+  .btn-cyan:hover {
+    box-shadow: 0 0 25px rgba(0, 240, 255, 0.5), inset 0 0 25px rgba(0, 240, 255, 0.15);
+    transform: translateY(-1px);
+  }
+  .btn-cyan:active {
+    transform: translateY(0);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+  }
+  .btn-cyan:disabled {
+    @apply opacity-40 cursor-not-allowed;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .btn-magenta {
+    @apply btn-neon text-white;
+    background: linear-gradient(135deg, #ff00e5, #8b5cf6);
+    box-shadow: 0 0 15px rgba(255, 0, 229, 0.3), inset 0 0 15px rgba(255, 0, 229, 0.1);
+  }
+  .btn-magenta:hover {
+    box-shadow: 0 0 25px rgba(255, 0, 229, 0.5), inset 0 0 25px rgba(255, 0, 229, 0.15);
+    transform: translateY(-1px);
+  }
+  .btn-magenta:active { transform: translateY(0); }
+  .btn-magenta:disabled {
+    @apply opacity-40 cursor-not-allowed;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .btn-ghost {
+    @apply btn-neon text-neon-cyan bg-transparent;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+  }
+  .btn-ghost:hover {
+    background: rgba(0, 240, 255, 0.05);
+    border-color: rgba(0, 240, 255, 0.6);
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.15);
+    transform: translateY(-1px);
+  }
+
+  .btn-danger {
+    @apply btn-neon text-red-400 bg-transparent;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+  .btn-danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.6);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+  }
+  .btn-danger:disabled {
+    @apply opacity-40 cursor-not-allowed;
+    box-shadow: none;
+  }
+}
+
+/* ─── Neon Table ─── */
+.neon-table {
+  @apply w-full text-left text-sm;
+}
+.neon-table thead {
+  @apply border-b border-neon-cyan/10;
+}
+.neon-table thead th {
+  @apply font-ui font-semibold text-xs uppercase tracking-widest text-gray-400 px-4 py-3;
+}
+.neon-table tbody tr {
+  @apply border-b border-terminal-dim/50 transition-all duration-200;
+}
+.neon-table tbody tr:hover {
+  background: rgba(0, 240, 255, 0.03);
+}
+
+/* ─── Animated Loading Pulse ─── */
+@keyframes load-bar {
+  0% { width: 0%; }
+  50% { width: 70%; }
+  100% { width: 100%; }
+}
+
+.loading-bar {
+  animation: load-bar 1.5s ease-in-out infinite;
+  background: linear-gradient(90deg, #00f0ff, #8b5cf6, #ff00e5);
+  height: 2px;
+  border-radius: 1px;
+}
+
+/* ─── Upload Progress Glow ─── */
+.progress-glow {
+  background: linear-gradient(90deg, #00f0ff, #8b5cf6, #ff00e5);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.5), 0 0 20px rgba(139, 92, 246, 0.3);
+  transition: width 0.3s ease;
+}
+
+/* ─── Drag & Drop Overlay ─── */
+.drag-overlay {
+  @apply fixed inset-0 z-50 flex items-center justify-center;
+  background: rgba(10, 10, 26, 0.85);
+  backdrop-filter: blur(8px);
+}
+.drag-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 20px;
+  border: 2px dashed #00f0ff;
+  border-radius: 16px;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ─── Stagger Animation Delays ─── */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.3s; }
+.stagger-7 { animation-delay: 0.35s; }
+.stagger-8 { animation-delay: 0.4s; }
+
+/* ─── Corner Decorations ─── */
+.corner-brackets::before,
+.corner-brackets::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: rgba(0, 240, 255, 0.3);
+  border-style: solid;
+}
+.corner-brackets::before {
+  top: -1px; left: -1px;
+  border-width: 1px 0 0 1px;
+}
+.corner-brackets::after {
+  bottom: -1px; right: -1px;
+  border-width: 0 1px 1px 0;
+}
+
+/* ─── Text Glow ─── */
+.text-glow-cyan {
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+}
+.text-glow-magenta {
+  text-shadow: 0 0 8px rgba(255, 0, 229, 0.5);
+}
+
+/* ─── Header Neon Line ─── */
+.header-line {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #00f0ff, #8b5cf6, #ff00e5, transparent);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+}
+
+/* ─── Transitions ─── */
+.view-enter {
+  animation: slide-up 0.35s ease-out forwards;
+}
+.view-enter-fast {
+  animation: fade-in 0.25s ease-out forwards;
+}
