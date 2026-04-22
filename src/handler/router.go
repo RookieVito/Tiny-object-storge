@@ -19,6 +19,7 @@ func NewRouter(backend storage.StorageBackend, cfg *config.Config, m *metrics.Me
 	bucketLocks := locks.NewBucketLocks()
 	bm := NewBucketManager(backend, bucketLocks)
 	om := NewObjectManager(backend, bucketLocks, cfg.MaxBodySize)
+	mm := NewMultipartManager(backend, bucketLocks, cfg.MaxBodySize)
 	a := auth.NewAuthenticator(cfg.AccessKey, cfg.SecretKey)
 
 	mux := http.NewServeMux()
@@ -28,18 +29,55 @@ func NewRouter(backend storage.StorageBackend, cfg *config.Config, m *metrics.Me
 	mux.HandleFunc("PUT /{bucket}", authWrap(a, "bucket", bm.CreateBucket))
 	mux.HandleFunc("DELETE /{bucket}", authWrap(a, "bucket", bm.DeleteBucket))
 	mux.HandleFunc("HEAD /{bucket}", authWrap(a, "bucket", bm.HeadBucket))
-	mux.HandleFunc("GET /{bucket}", authWrap(a, "bucket", bm.ListObjects))
+	// GET /{bucket} 同时处理 ListObjects 和 ListMultipartUploads（?uploads 参数）。
+	mux.HandleFunc("GET /{bucket}", authWrap(a, "bucket", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has("uploads") {
+			mm.ListMultipartUploads(w, r)
+		} else {
+			bm.ListObjects(w, r)
+		}
+	}))
 
 	// Object 操作。
-	mux.HandleFunc("PUT /{bucket}/{key...}", authWrap(a, "object", om.PutObject))
-	mux.HandleFunc("GET /{bucket}/{key...}", authWrap(a, "object", om.GetObject))
+	// PUT /{bucket}/{key...} 处理普通上传和 multipart UploadPart（?uploadId 参数）。
+	mux.HandleFunc("PUT /{bucket}/{key...}", authWrap(a, "object", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has("uploadId") {
+			mm.UploadPart(w, r)
+		} else {
+			om.PutObject(w, r)
+		}
+	}))
+	// GET /{bucket}/{key...} 处理普通下载和 multipart ListParts（?uploadId 参数）。
+	mux.HandleFunc("GET /{bucket}/{key...}", authWrap(a, "object", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has("uploadId") {
+			mm.ListParts(w, r)
+		} else {
+			om.GetObject(w, r)
+		}
+	}))
 	mux.HandleFunc("HEAD /{bucket}/{key...}", authWrap(a, "object", om.HeadObject))
-	mux.HandleFunc("DELETE /{bucket}/{key...}", authWrap(a, "object", om.DeleteObject))
+	// DELETE /{bucket}/{key...} 处理普通删除和 multipart Abort（?uploadId 参数）。
+	mux.HandleFunc("DELETE /{bucket}/{key...}", authWrap(a, "object", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has("uploadId") {
+			mm.AbortMultipartUpload(w, r)
+		} else {
+			om.DeleteObject(w, r)
+		}
+	}))
+	// POST /{bucket}/{key...} 处理 multipart 操作：Initiate（?uploads）和 Complete（?uploadId）。
+	mux.HandleFunc("POST /{bucket}/{key...}", authWrap(a, "object", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has("uploads") {
+			mm.InitiateMultipartUpload(w, r)
+		} else if r.URL.Query().Has("uploadId") {
+			mm.CompleteMultipartUpload(w, r)
+		} else {
+			http.Error(w, "InvalidRequest", http.StatusBadRequest)
+		}
+	}))
 
 	// 用独立 mux 处理 metrics 端点，避免与 {bucket} 通配符冲突。
 	topMux := http.NewServeMux()
-	topMux.Handle("GET /_metrics", m)
-	topMux.Handle("HEAD /_metrics", m)
+	topMux.Handle("/_metrics", m)
 	if clusterHandler != nil {
 		topMux.Handle("/_cluster/", clusterHandler)
 	}

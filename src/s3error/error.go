@@ -30,6 +30,14 @@ var (
 	ErrInsufficientStorage = &S3APIError{"InsufficientStorage", "Not enough available storage shards to complete the operation.", http.StatusServiceUnavailable}
 	ErrWriteQuorumFailed = &S3APIError{"WriteQuorumFailed", "Failed to achieve write quorum. Not enough replicas available.", http.StatusServiceUnavailable}
 	ErrReadQuorumFailed  = &S3APIError{"ReadQuorumFailed", "Failed to achieve read quorum. Not enough replicas available.", http.StatusServiceUnavailable}
+
+	// Multipart upload 错误。
+	ErrNoSuchUpload      = &S3APIError{"NoSuchUpload", "The specified upload does not exist.", http.StatusNotFound}
+	ErrInvalidPart       = &S3APIError{"InvalidPart", "The specified part does not exist or ETag does not match.", http.StatusBadRequest}
+	ErrEntityTooSmall    = &S3APIError{"EntityTooSmall", "Your proposed upload is smaller than the minimum allowed object size.", http.StatusBadRequest}
+	ErrInvalidPartOrder  = &S3APIError{"InvalidPartOrder", "The list of parts was not in ascending order. Parts must be ordered by part number.", http.StatusBadRequest}
+	ErrInvalidPartNumber = &S3APIError{"InvalidPartNumber", "The part number must be between 1 and 10000, inclusive.", http.StatusBadRequest}
+	ErrNotImplemented    = &S3APIError{"NotImplemented", "This functionality is not implemented.", http.StatusNotImplemented}
 )
 
 // s3ErrorResponse 是 S3 错误的 XML 信封。

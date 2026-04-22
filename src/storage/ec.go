@@ -444,3 +444,32 @@ func (eb *ECBackend) listECObjects(bucket, prefix, delimiter, startAfter string,
 func base64Encode(s string) string {
 	return base64.StdEncoding.EncodeToString([]byte(s))
 }
+
+// MultipartStorage 接口 stub — EC 后端暂不支持 multipart upload。
+func (eb *ECBackend) InitiateUpload(bucket, key string, contentType string, userMeta map[string]string) (*UploadInfo, error) {
+	return nil, s3error.ErrNotImplemented
+}
+
+func (eb *ECBackend) UploadPart(bucket, key, uploadId string, partNumber int, data []byte) (*PartInfo, error) {
+	return nil, s3error.ErrNotImplemented
+}
+
+func (eb *ECBackend) CompleteUpload(bucket, key, uploadId string, parts []PartInfo) (string, error) {
+	return "", s3error.ErrNotImplemented
+}
+
+func (eb *ECBackend) AbortUpload(bucket, key, uploadId string) error {
+	return s3error.ErrNotImplemented
+}
+
+func (eb *ECBackend) ListParts(bucket, key, uploadId string) ([]PartInfo, error) {
+	return nil, s3error.ErrNotImplemented
+}
+
+func (eb *ECBackend) ListUploads(bucket, prefix, keyMarker string, maxUploads int) ([]UploadInfo, string, bool, error) {
+	return nil, "", false, s3error.ErrNotImplemented
+}
+
+func (eb *ECBackend) GetUploadInfo(bucket, key, uploadId string) (*UploadInfo, error) {
+	return nil, s3error.ErrNotImplemented
+}

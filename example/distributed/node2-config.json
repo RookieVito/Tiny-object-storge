@@ -1,10 +1,12 @@
 {
   "port": 9002,
   "root": "./data/node-2",
+  "access_key": "minioadmin",
+  "secret_key": "minioadmin",
   "backend_type": "distributed",
   "distributed": {
     "node_id": "localhost:9002",
-    "seed_nodes": ["http://localhost:9001"],
+    "seed_nodes": ["localhost:9001"],
     "replication_factor": 3,
     "read_quorum": 2,
     "write_quorum": 2,

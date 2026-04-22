@@ -57,7 +57,8 @@ if cfg.ReadQuorum + cfg.WriteQuorum <= cfg.ReplicationFactor {
 
 ```go
 func (db *DistributedBackend) PutObject(bucket, key string, data []byte, meta *ObjectMeta) error {
-    reps := db.replicas(bucket + "/" + key)  // 一致性哈希确定 N 个副本节点
+    // replicas() 通过 AliveNodes() 过滤，确保只选择可达节点
+    reps := db.replicas(bucket + "/" + key)  // 一致性哈希确定 N 个副本节点（仅 alive）
 
     var successes int32
     var wg sync.WaitGroup
@@ -83,6 +84,8 @@ func (db *DistributedBackend) PutObject(bucket, key string, data []byte, meta *O
     return ErrWriteQuorumFailed
 }
 ```
+
+> **节点选择策略**：`replicas()` 方法先用 `membership.AliveNodes()` 获取存活节点集合，再从哈希环候选节点中过滤。这避免了节点已加入成员表但尚未加入哈希环的竞态窗口内选中不可达节点。
 
 ### 读取流程
 

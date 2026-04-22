@@ -191,6 +191,9 @@ func (lb *LocalBackend) ListObjects(bucket, prefix, delimiter, startAfter string
 			return nil
 		}
 		if path == bucketPath || d.IsDir() || strings.HasSuffix(path, ".meta") {
+			if d.IsDir() && d.Name() == ".uploads" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		rel, err := filepath.Rel(bucketPath, path)

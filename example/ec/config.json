@@ -1,6 +1,8 @@
 {
   "port": 9000,
   "backend_type": "ec",
+  "access_key": "minioadmin",
+  "secret_key": "minioadmin",
   "ec": {
     "disks": [
       "./data/disk-0",

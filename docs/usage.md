@@ -240,6 +240,22 @@ CLI 参数优先级高于配置文件：
 |------|------|------|------|
 | `GET /_metrics` | 无 | 运行指标 JSON |
 | `GET /_ui/{path...}` | 无 | Web UI 静态资源 |
+| `POST /_cluster/*` | 无 | 集群内部协议（分布式模式） |
+
+### Multipart Upload 操作（Phase 8）
+
+支持大文件分片上传，每个分片最小 5MB（最后一个分片除外）。
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| `POST /{bucket}/{key}?uploads` | 需要 | 发起分片上传，返回 UploadId |
+| `PUT /{bucket}/{key}?partNumber=N&uploadId=X` | 需要 | 上传分片，返回 ETag |
+| `POST /{bucket}/{key}?uploadId=X` | 需要 | 完成上传，请求体为 XML 分片列表 |
+| `DELETE /{bucket}/{key}?uploadId=X` | 需要 | 取消上传 |
+| `GET /{bucket}/{key}?uploadId=X` | 需要 | 列出已上传分片 |
+| `GET /{bucket}?uploads` | 需要 | 列出进行中的上传 |
+
+> EC 和 Distributed 后端暂不支持 multipart upload，返回 501 NotImplemented。
 
 ### 错误码
 
@@ -247,13 +263,20 @@ CLI 参数优先级高于配置文件：
 |-------------|----------|------|
 | 400 | InvalidBucketName | Bucket 名称不合法 |
 | 400 | InvalidKey | Key 为空或包含 `..` |
+| 400 | EntityTooSmall | 非 final part 小于 5MB |
+| 400 | InvalidPartNumber | partNumber 不在 1-10000 范围 |
+| 400 | InvalidPartOrder | parts 未按编号升序 |
 | 403 | AccessDenied | 缺少 Authorization 头或 AccessKey 不匹配 |
 | 403 | SignatureDoesNotMatch | 签名验证失败 |
 | 404 | NoSuchBucket | Bucket 不存在 |
 | 404 | NoSuchKey | 对象不存在 |
+| 404 | NoSuchUpload | 指定的 multipart upload 不存在 |
 | 409 | BucketAlreadyExists | 创建已存在的 Bucket |
 | 409 | BucketNotEmpty | 删除非空 Bucket |
 | 413 | RequestEntityTooLarge | 上传超过大小限制 |
+| 501 | NotImplemented | 后端不支持的操作（如 EC/Distributed 的 multipart） |
+| 503 | WriteQuorumFailed | 分布式写入 quorum 未满足 |
+| 503 | ReadQuorumFailed | 分布式读取 quorum 未满足 |
 
 错误响应格式：
 
@@ -273,7 +296,7 @@ CLI 参数优先级高于配置文件：
 # 启动服务器
 go run ./cmd/server/ &
 
-# 运行全量测试（Phase 1-7）
+# 运行全量测试（Phase 1-8）
 go run ./test/
 
 # 运行指定 Phase
@@ -284,6 +307,7 @@ go run ./test/ phase4    # 存储抽象
 go run ./test/ phase5    # 纠删码（需要 EC 配置启动服务器）
 go run ./test/ phase6    # 分布式（自动启动 3 节点）
 go run ./test/ phase7    # CLI 客户端集成测试
+go run ./test/ phase8    # Multipart Upload 集成测试
 
 # 单元测试（不需要服务器）
 go test ./src/ec/...
@@ -301,6 +325,11 @@ go test ./src/cluster/...
 ├── my-bucket/
 │   ├── hello.txt              # 数据文件
 │   ├── hello.txt.meta         # 元数据（JSON）
+│   ├── .uploads/              # Multipart 临时目录（ListObjects 自动跳过）
+│   │   └── {uploadId}/
+│   │       ├── info.json      # UploadInfo 元数据
+│   │       ├── part-0001.bin  # Part 数据
+│   │       └── part-0001.bin.meta  # PartInfo 元数据
 │   └── photos/
 │       └── 2024/
 │           ├── cat.jpg

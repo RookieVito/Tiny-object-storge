@@ -22,12 +22,13 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 │  s3Middleware │ logMiddleware (slog)                  │
 │  authMiddleware (AWS Sig V2) │ Metrics (/_metrics)   │
 ├──────────────────────────────────────────────────────┤
-│  Router │ BucketManager │ ObjectManager              │
+│  Router │ BucketManager │ ObjectManager │ MultipartManager │
 │  BucketLocks (per-bucket mutex)                      │
 ├──────────────────────────────────────────────────────┤
 │           StorageBackend (interface)                  │
 │  ┌─ LocalBackend ─────────────────────────────────┐ │
 │  │  PathMapper │ service (WriteFile/WriteMeta)     │ │
+│  │  MultipartStorage (.uploads/ 临时目录)           │ │
 │  │  Linux Filesystem (落盘)                        │ │
 │  │  {root}/{bucket}/{key}     ← data file          │ │
 │  │  {root}/{bucket}/{key}.meta ← metadata JSON     │ │
@@ -50,11 +51,13 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 | **main.go** | main.go | Config flags, slog initialization, backend factory, server startup, graceful shutdown |
 | **s3Middleware** | router.go | Server/Date headers, panic recovery |
 | **logMiddleware** | router.go | Structured JSON logging (slog), metrics counter updates |
-| **Router** | router.go | Two-layer ServeMux: topMux for /_metrics, inner mux for S3 routes |
+| **Router** | router.go | Two-layer ServeMux: topMux for /_metrics and /_cluster/*, inner mux for S3 routes |
 | **BucketManager** | bucket.go | Create/delete/head/list buckets, per-bucket lock on writes |
 | **ObjectManager** | object.go | Put/get/head/delete objects, MaxBytesReader, per-bucket lock on writes |
+| **MultipartManager** | multipart.go | Multipart upload 6 个 HTTP 端点，type assertion 检测后端支持 |
 | **StorageBackend** | storage/backend.go | 存储后端统一接口（Bucket/Object CRUD + ListObjects） |
-| **LocalBackend** | storage/local.go | 基于本地文件系统的 StorageBackend 实现 |
+| **MultipartStorage** | storage/backend.go | 可选扩展接口，multipart upload 7 个方法（LocalBackend 完整实现） |
+| **LocalBackend** | storage/local.go | 基于本地文件系统的 StorageBackend + MultipartStorage 实现 |
 | **BucketLocks** | locks.go | Per-bucket mutex for concurrent write safety |
 | **Metrics** | metrics.go | Atomic counters + on-demand filesystem scan, GET /_metrics handler |
 | **PathMapper** | pathmapper.go | Convert (bucket, key) to filesystem path safely |
@@ -63,7 +66,7 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 | **ConsistentHash** | hash/consistent.go | Ketama 风格一致性哈希环，双哈希 FNV-1a + 虚拟节点 |
 | **GossipMembership** | cluster/member.go | SWIM 简化版 Gossip 协议，Ping/PingReq/Suspect/Dead |
 | **Transport** | cluster/transport.go | HTTP RPC 通信层（Ping/Join/Replicate） |
-| **DistributedBackend** | storage/distributed.go | Quorum R/W 分布式存储后端，coordinator 模式 |
+| **DistributedBackend** | storage/distributed.go | Quorum R/W 分布式存储后端，coordinator 模式，replicas() 通过 AliveNodes 过滤 |
 
 ---
 
@@ -74,6 +77,11 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 ├── my-bucket/
 │   ├── hello.txt                    # data file
 │   ├── hello.txt.meta               # metadata (JSON)
+│   ├── .uploads/                    # multipart 临时目录（ListObjects 跳过）
+│   │   └── {uploadId}/
+│   │       ├── info.json            # UploadInfo 元数据
+│   │       ├── part-0001.bin        # Part 数据
+│   │       └── part-0001.bin.meta   # PartInfo 元数据
 │   └── photos/
 │       └── 2024/
 │           ├── cat.jpg
@@ -121,26 +129,50 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 | DeleteObject | DELETE | `/{bucket}/{key...}` | Done |
 | ListObjectsV2 | GET | `/{bucket}` (with query) | Phase 2 |
 
+### Multipart Upload Operations
+
+| S3 Operation | HTTP Method | Route Pattern | Status |
+|-------------|-------------|---------------|--------|
+| InitiateMultipartUpload | POST | `/{bucket}/{key...}?uploads` | Phase 8 |
+| UploadPart | PUT | `/{bucket}/{key...}?partNumber=N&uploadId=X` | Phase 8 |
+| CompleteMultipartUpload | POST | `/{bucket}/{key...}?uploadId=X` | Phase 8 |
+| AbortMultipartUpload | DELETE | `/{bucket}/{key...}?uploadId=X` | Phase 8 |
+| ListParts | GET | `/{bucket}/{key...}?uploadId=X` | Phase 8 |
+| ListMultipartUploads | GET | `/{bucket}?uploads` | Phase 8 |
+
 ### Route Registration (Go ServeMux patterns)
 
 ```go
-// 内部 mux — S3 路由
+// 内部 mux — S3 路由（含 multipart 分发）
 mux.HandleFunc("GET /{$}",              bm.ListBuckets)
 mux.HandleFunc("PUT /{bucket}",          authWrap(auth, "bucket", bm.CreateBucket))
 mux.HandleFunc("DELETE /{bucket}",       authWrap(auth, "bucket", bm.DeleteBucket))
 mux.HandleFunc("HEAD /{bucket}",         authWrap(auth, "bucket", bm.HeadBucket))
-mux.HandleFunc("GET /{bucket}",          authWrap(auth, "bucket", bm.ListObjects))
-mux.HandleFunc("PUT /{bucket}/{key...}", authWrap(auth, "object", om.PutObject))
-mux.HandleFunc("GET /{bucket}/{key...}", authWrap(auth, "object", om.GetObject))
+mux.HandleFunc("GET /{bucket}",          authWrap(auth, "bucket", func(w, r) {
+    if r.URL.Query().Has("uploads") { mm.ListMultipartUploads(w, r) }
+    else { bm.ListObjects(w, r) }
+}))
+mux.HandleFunc("POST /{bucket}/{key...}", authWrap(auth, "object", func(w, r) {
+    if r.URL.Query().Has("uploads") { mm.InitiateMultipartUpload(w, r) }
+    else if r.URL.Query().Has("uploadId") { mm.CompleteMultipartUpload(w, r) }
+}))
+mux.HandleFunc("PUT /{bucket}/{key...}", authWrap(auth, "object", func(w, r) {
+    if r.URL.Query().Has("uploadId") { mm.UploadPart(w, r) }
+    else { om.PutObject(w, r) }
+}))
+mux.HandleFunc("GET /{bucket}/{key...}", authWrap(auth, "object", func(w, r) {
+    if r.URL.Query().Has("uploadId") { mm.ListParts(w, r) }
+    else { om.GetObject(w, r) }
+}))
 mux.HandleFunc("HEAD /{bucket}/{key...}",authWrap(auth, "object", om.HeadObject))
-mux.HandleFunc("DELETE /{bucket}/{key...}", authWrap(auth, "object", om.DeleteObject))
+mux.HandleFunc("DELETE /{bucket}/{key...}", authWrap(auth, "object", func(w, r) {
+    if r.URL.Query().Has("uploadId") { mm.AbortMultipartUpload(w, r) }
+    else { om.DeleteObject(w, r) }
+}))
 
 // 顶层 mux — /_metrics + /_cluster/* + fallback 到内部 mux
-topMux.Handle("GET /_metrics",  metrics)
-topMux.Handle("HEAD /_metrics", metrics)
-if clusterHandler != nil {
-    topMux.Handle("/_cluster/", clusterHandler) // 分布式模式集群端点
-}
+topMux.Handle("/_metrics",         metrics)       // 所有方法到达 handler，非 GET 返回 405
+topMux.Handle("/_cluster/",        clusterHandler) // 分布式模式集群端点
 topMux.Handle("/", mux)
 
 // 中间件链
@@ -187,17 +219,19 @@ key doesn't exist.
 Go's `net/http` handles concurrency natively (one goroutine per request).
 Phase 3 introduces `BucketLocks` (cmd/server/locks.go) — a per-bucket `sync.Mutex`:
 
-- **Lock scope:** CreateBucket, DeleteBucket, PutObject, DeleteObject (write operations)
-- **No lock:** GetObject, HeadObject, ListObjects, ListBuckets, HeadBucket (read operations)
+- **Lock scope:** CreateBucket, DeleteBucket, PutObject, DeleteObject, CompleteMultipartUpload, AbortMultipartUpload (write operations)
+- **No lock:** GetObject, HeadObject, ListObjects, ListBuckets, HeadBucket, InitiateMultipartUpload, UploadPart, ListParts, ListUploads (read / atomic operations)
 - **Rationale:** Linux concurrent `read()`/`write()` on the same file is safe; `os.Rename` is atomic.
   Reads either see the old or new data, never partial state. Only writes need serialization to
   prevent races (e.g., two concurrent `CreateBucket` for the same name).
-- **Shared locks:** BucketManager and ObjectManager hold the same `*BucketLocks` instance,
-  so a `PutObject` and `DeleteBucket` on the same bucket are serialized by the same mutex.
+- **Shared locks:** BucketManager, ObjectManager 和 MultipartManager 持有同一个 `*BucketLocks` 实例，
+  所以 `PutObject`、`CompleteMultipartUpload` 和 `DeleteBucket` 在同一 bucket 上会被同一个 mutex 串行化。
+- **Multipart UploadPart 并发安全：** 不同 partNumber 可并行上传，同一 partNumber 通过原子 rename（`service.WriteFile`）保证覆盖安全。
 
 ### 6.5 ETag Generation
 
-`ETag = fmt.Sprintf("\"%x\"", md5.Sum(body))` — quoted hex MD5, matching S3 format.
+- **PutObject**：`ETag = fmt.Sprintf("\"%x\"", md5.Sum(body))` — quoted hex MD5, matching S3 format.
+- **Multipart Complete**：`ETag = fmt.Sprintf("\"%x-%d\"", md5.Sum(concatMD5s), partCount)` — S3 标准复合 ETag，`concatMD5s` 为各 part 的 16 字节 MD5 摘要拼接。
 
 ---
 
@@ -249,14 +283,16 @@ tiny-object-storge/
 │   │   ├── galois.go          # GF(2^8) 有限域算术（查找表）
 │   │   └── reedsolomon.go     # Cauchy Reed-Solomon 编解码器
 │   ├── storage/
-│   │   ├── backend.go         # StorageBackend 接口（存储抽象层）
+│   │   ├── backend.go         # StorageBackend 接口 + MultipartStorage 接口（存储抽象层）
 │   │   ├── local.go           # LocalBackend 本地文件系统实现
+│   │   ├── multipart.go       # LocalBackend MultipartStorage 实现
 │   │   ├── ec.go              # ECBackend 纠删码实现
 │   │   └── distributed.go     # DistributedBackend Quorum R/W 分布式实现
 │   └── handler/
 │       ├── router.go          # 路由注册 + middleware 链（HTTP 层）
 │       ├── bucket.go          # BucketManager（HTTP 层）
 │       ├── object.go          # ObjectManager（HTTP 层）
+│       ├── multipart.go       # MultipartManager（HTTP 层）
 │       └── helpers.go         # 辅助函数
 ├── test/
 │   ├── main.go                # Test runner
@@ -266,7 +302,9 @@ tiny-object-storge/
 │   ├── phase3.go              # Phase 3 tests (12)
 │   ├── phase4.go              # Phase 4 tests (34)
 │   ├── phase5.go              # Phase 5 tests (17)
-│   └── phase6.go              # Phase 6 分布式集成测试 (20)
+│   ├── phase6.go              # Phase 6 分布式集成测试 (20)
+│   ├── phase7.go              # Phase 7 客户端工具集成测试 (19)
+│   └── phase8.go              # Phase 8 Multipart Upload 集成测试 (32)
 ├── docs/
 │   ├── architecture.md
 │   ├── phase1-summary.md
@@ -275,6 +313,8 @@ tiny-object-storge/
 │   ├── phase4-summary.md
 │   ├── phase5-summary.md
 │   ├── phase6-summary.md
+│   ├── phase7-summary.md
+│   ├── phase8-summary.md
 │   └── technical/
 └── TODO.md
 ```
@@ -348,8 +388,28 @@ cmd/server/     ← handler, config, storage
 - [x] **配置支持**（config.go）— DistributedConfig 结构体，seed_nodes、replication_factor 等
 - [x] 9 个一致性哈希单元测试 + 11 个 Gossip 单元测试 + 20 个分布式集成测试
 
+### Phase 7: Client Tools ✅
+- [x] **CLI 客户端**（cmd/client/）— ls/cp/mb/rb/rm/cat/stat 子命令，Sig V2 签名，进度条
+- [x] **Web UI**（web/）— React 18 + TypeScript SPA，浏览器端 Sig V2 签名
+- [x] Bucket/Object 管理、前缀导航、文件拖拽上传（带进度条）、下载、删除
+- [x] embed.FS 嵌入到 Go 二进制，`/_ui/` 路径自动服务
+- [x] 19 个 CLI 客户端集成测试
+
+### Phase 8: Multipart Upload ✅
+- [x] **MultipartStorage 接口**（storage/backend.go）— 独立于 StorageBackend 的可选扩展接口
+- [x] **LocalBackend 实现**（storage/multipart.go）— 7 个方法完整实现
+- [x] **6 个 S3 multipart 端点** — Initiate、UploadPart、Complete、Abort、ListParts、ListUploads
+- [x] **路由分发**（handler/router.go）— 通过 query param 复用现有路由
+- [x] **MultipartManager**（handler/multipart.go）— type assertion 检测后端支持
+- [x] ETag 标准算法（单 part MD5 + 最终对象 `MD5(concat)-N`）
+- [x] 并发安全（UploadPart 无锁可并行，Complete/Abort 加 bucket 锁）
+- [x] `.uploads/` 目录隔离（ListObjects/Metrics 自动跳过）
+- [x] EC/Distributed 后端 stub（返回 ErrNotImplemented）
+- [x] 32 个集成测试
+
 ### Future Enhancements (post-MVP)
-- Multipart upload
+- EC/Distributed 后端 Multipart Upload 支持
 - Object versioning
 - AWS Sig V4 authentication
 - 磁盘健康监控和自动 rebalance
+- TTL 自动清理过期 upload

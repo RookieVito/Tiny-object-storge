@@ -65,6 +65,9 @@ func (m *Metrics) scanFilesystem() (bucketCount int, storageBytes int64) {
 		bucketCount++
 		filepath.WalkDir(filepath.Join(m.root, e.Name()), func(path string, d os.DirEntry, walkErr error) error {
 			if walkErr != nil || d.IsDir() {
+				if d.IsDir() && d.Name() == ".uploads" {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 			if filepath.Ext(path) == ".meta" {

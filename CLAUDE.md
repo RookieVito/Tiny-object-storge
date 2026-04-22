@@ -75,6 +75,9 @@ go run ./test/ phase6
 # CLI 客户端集成测试
 go run ./test/ phase7
 
+# Multipart upload 集成测试
+go run ./test/ phase8
+
 # 一致性哈希 + Gossip 单元测试（不需要服务器）
 go test ./src/hash/...
 go test ./src/cluster/...
@@ -106,8 +109,8 @@ src/
   service/                   # 业务层：ObjectMeta、原子读写、Content-Type 检测
   metrics/                   # 可观测性层：Metrics (atomic 计数 + 文件系统扫描)
   ec/                        # 纠删码层：GF256 有限域 + ReedSolomon 编解码器
-  storage/                   # 存储抽象层：StorageBackend 接口 + LocalBackend + ECBackend + DistributedBackend
-  handler/                   # HTTP 层：BucketManager、ObjectManager、router、middleware
+  storage/                   # 存储抽象层：StorageBackend + MultipartStorage 接口 + LocalBackend + ECBackend + DistributedBackend
+  handler/                   # HTTP 层：BucketManager、ObjectManager、MultipartManager、router、middleware
 ```
 
 **Key types:**
@@ -128,11 +131,20 @@ src/
 - `BucketManager` (src/handler) — bucket CRUD + ListObjectsV2, write ops protected by per-bucket lock
 - `ObjectManager` (src/handler) — object CRUD, MaxBytesReader body limit, per-bucket lock on writes
 - `Metrics` (src/metrics) — atomic counters + on-demand filesystem scan, `GET /_metrics` handler
+- `MultipartStorage` (src/storage) — 可选接口，定义 multipart upload 的 7 个方法（Initiate、UploadPart、Complete、Abort、ListParts、ListUploads、GetUploadInfo）
+- `PartInfo` (src/storage) — 已上传 part 的元数据（PartNumber、Size、ETag、LastModified）
+- `UploadInfo` (src/storage) — 进行中 multipart upload 的元数据（UploadId、Bucket、Key、ContentType、UserMetadata、Initiated）
+- `MultipartManager` (src/handler) — multipart upload HTTP handler，6 个端点，通过 type assertion 检测后端支持
 
 **Route table:**
 - `GET /{$}` — ListBuckets (no auth)
-- `PUT/DELETE/HEAD/GET /{bucket}` — bucket ops + ListObjects (auth required)
-- `PUT/GET/HEAD/DELETE /{bucket}/{key...}` — object ops (auth required)
+- `PUT/DELETE/HEAD /{bucket}` — bucket ops (auth required)
+- `GET /{bucket}` — ListObjects (auth); `?uploads` → ListMultipartUploads
+- `POST /{bucket}/{key...}` — `?uploads` → InitiateMultipartUpload; `?uploadId` → CompleteMultipartUpload (auth required)
+- `PUT /{bucket}/{key...}` — PutObject; `?uploadId` → UploadPart (auth required)
+- `GET /{bucket}/{key...}` — GetObject; `?uploadId` → ListParts (auth required)
+- `HEAD /{bucket}/{key...}` — HeadObject (auth required)
+- `DELETE /{bucket}/{key...}` — DeleteObject; `?uploadId` → AbortMultipartUpload (auth required)
 - `GET/HEAD /_metrics` — metrics endpoint (no auth)
 - `GET /_ui/{path...}` — Web UI 静态资源 (no auth, SPA fallback, embed.FS)
 - `POST /_cluster/ping|ping-req|join|leave` — Gossip 协议 (no auth, distributed mode)
@@ -142,6 +154,7 @@ src/
 **ListObjectsV2 algorithm:** WalkDir → collect keys + read .meta → sort → prefix filter → start-after pagination → delimiter grouping (CommonPrefixes) → max-keys truncation → base64 continuation token.
 
 **Disk layout (local):** `{root}/{bucket}/{key}` for data, `{root}/{bucket}/{key}.meta` for JSON metadata.
+**Disk layout (local, multipart):** `{root}/{bucket}/.uploads/{uploadId}/info.json` for upload metadata, `part-NNNN.bin` for part data, `part-NNNN.bin.meta` for part metadata. Cleaned up after Complete/Abort.
 
 **Disk layout (EC):** `disk-{i}/{bucket}/{key}` for each shard (i=0..N-1), `meta-root/{bucket}/{key}.ec-meta` for EC metadata.
 
@@ -152,6 +165,7 @@ src/
 - All new S3 errors: `*s3error.S3APIError` vars in `src/s3error/error.go`
 - All file writes: atomic pattern (`service.WriteFile`/`service.WriteMeta`)
 - All storage operations go through `StorageBackend` interface — handler 层不直接调用 pathmapper/service/os
+- Multipart upload 通过可选 `MultipartStorage` 接口扩展，后端未实现时返回 ErrNotImplemented
 - New backends implement `storage.StorageBackend` interface, registered via backend factory in `cmd/server/main.go`
 - Handlers extract `bucket`/`key` via `r.PathValue()`, validate through backend
 - New protected routes must be wrapped with `authWrap(auth, "bucket"|"object", handler)`

@@ -1,4 +1,5 @@
 {
   "port": 9000,
-  "backend_type": "local"
+  "backend_type": "local",
+  "root": "./data"
 }

@@ -1,6 +1,8 @@
 {
   "port": 9001,
   "root": "./data/node-1",
+  "access_key": "minioadmin",
+  "secret_key": "minioadmin",
   "backend_type": "distributed",
   "distributed": {
     "node_id": "localhost:9001",

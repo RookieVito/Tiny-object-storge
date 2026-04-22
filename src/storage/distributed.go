@@ -168,11 +168,38 @@ func (db *DistributedBackend) nextRequestID() string {
 	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), n)
 }
 
-// replicas 返回 key 的 N 个副本节点（包含自己或远程）。
+// replicas 返回 key 的 N 个副本节点（仅包含 alive 状态的节点）。
+// 使用 membership.AliveNodes() 过滤，避免在节点加入成员表但尚未加入哈希环的
+// 竞态窗口内选择不可达节点。
 func (db *DistributedBackend) replicas(key string) []string {
+	aliveNodes := db.membership.AliveNodes()
+	if len(aliveNodes) == 0 {
+		return nil
+	}
+
+	aliveSet := make(map[string]bool, len(aliveNodes))
+	for _, n := range aliveNodes {
+		aliveSet[string(n.ID)] = true
+	}
+
 	db.mu.RLock()
 	defer db.mu.RUnlock()
-	return db.ring.GetNodes(key, db.config.ReplicationFactor)
+
+	// 从哈希环获取候选节点，仅保留 alive 节点。
+	n := db.config.ReplicationFactor
+	if n > len(aliveNodes) {
+		n = len(aliveNodes)
+	}
+	candidates := db.ring.GetNodes(key, n)
+
+	result := make([]string, 0, n)
+	for _, node := range candidates {
+		if aliveSet[node] {
+			result = append(result, node)
+		}
+	}
+
+	return result
 }
 
 // isSelf 检查节点 ID 是否是本节点。
@@ -218,6 +245,8 @@ func fromMetaMsg(msg *cluster.ObjectMetaMsg) (*service.ObjectMeta, error) {
 
 func (db *DistributedBackend) CreateBucket(bucket string) error {
 	reps := db.replicas(bucket)
+	slog.Debug("create_bucket replicas", "bucket", bucket, "replicas", reps, "count", len(reps))
+
 	var wg sync.WaitGroup
 	successes := int32(0)
 	errs := make([]error, len(reps))
@@ -242,6 +271,9 @@ func (db *DistributedBackend) CreateBucket(bucket string) error {
 					err = fmt.Errorf("remote error: %s", resp.Error)
 				}
 			}
+			if err != nil {
+				slog.Debug("create_bucket replica failed", "bucket", bucket, "node", node, "err", err)
+			}
 			errs[idx] = err
 			if err == nil {
 				atomic.AddInt32(&successes, 1)
@@ -253,6 +285,12 @@ func (db *DistributedBackend) CreateBucket(bucket string) error {
 	if int(successes) >= db.config.WriteQuorum {
 		return nil
 	}
+	slog.Warn("create_bucket quorum failed",
+		"bucket", bucket,
+		"successes", successes,
+		"required", db.config.WriteQuorum,
+		"replica_count", len(reps),
+		"errors", errs)
 	return s3error.ErrWriteQuorumFailed
 }
 
@@ -973,4 +1011,33 @@ func sortEntries(entries []ObjectEntry) {
 			}
 		}
 	}
+}
+
+// MultipartStorage 接口 stub — Distributed 后端暂不支持 multipart upload。
+func (db *DistributedBackend) InitiateUpload(bucket, key string, contentType string, userMeta map[string]string) (*UploadInfo, error) {
+	return nil, s3error.ErrNotImplemented
+}
+
+func (db *DistributedBackend) UploadPart(bucket, key, uploadId string, partNumber int, data []byte) (*PartInfo, error) {
+	return nil, s3error.ErrNotImplemented
+}
+
+func (db *DistributedBackend) CompleteUpload(bucket, key, uploadId string, parts []PartInfo) (string, error) {
+	return "", s3error.ErrNotImplemented
+}
+
+func (db *DistributedBackend) AbortUpload(bucket, key, uploadId string) error {
+	return s3error.ErrNotImplemented
+}
+
+func (db *DistributedBackend) ListParts(bucket, key, uploadId string) ([]PartInfo, error) {
+	return nil, s3error.ErrNotImplemented
+}
+
+func (db *DistributedBackend) ListUploads(bucket, prefix, keyMarker string, maxUploads int) ([]UploadInfo, string, bool, error) {
+	return nil, "", false, s3error.ErrNotImplemented
+}
+
+func (db *DistributedBackend) GetUploadInfo(bucket, key, uploadId string) (*UploadInfo, error) {
+	return nil, s3error.ErrNotImplemented
 }
