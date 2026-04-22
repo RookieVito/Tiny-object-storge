@@ -6,6 +6,7 @@ server
 
 # 数据目录
 data/
+testdata/
 
 # IDE
 .idea/

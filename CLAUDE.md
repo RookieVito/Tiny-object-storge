@@ -81,6 +81,13 @@ go run ./test/ phase8
 # 一致性哈希 + Gossip 单元测试（不需要服务器）
 go test ./src/hash/...
 go test ./src/cluster/...
+
+# 一键全量测试脚本（自动编译、启停服务器、清理数据）
+./test/scripts/run.sh            # 全量（local + EC + distributed + unit）
+./test/scripts/run.sh local      # 仅 local 模式
+./test/scripts/run.sh ec         # 仅 EC 模式
+./test/scripts/run.sh distributed # 仅分布式
+./test/scripts/run.sh unit       # 仅单元测试
 ```
 
 ## Architecture
