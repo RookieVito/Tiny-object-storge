@@ -98,7 +98,7 @@ go test ./src/cluster/...
 
 A minimal S3-compatible object storage. Multi-package Go project under `src/`, no frameworks.
 
-**Request flow:** `s3Middleware` (Server/Date headers, panic recovery) → `logMiddleware` (slog structured JSON log + metrics counters) → `authMiddleware` (AWS Sig V4 + V2) → `ServeMux` (method+path routing) → handler → `StorageBackend`.
+**Request flow:** `s3Middleware` (Server/Date headers, panic recovery) → `logMiddleware` (slog structured JSON log + metrics counters) → `CORSMiddleware` (origin matching, preflight) → `authMiddleware` (AWS Sig V4 + V2) → `ServeMux` (method+path routing) → handler → `StorageBackend`.
 
 **Package structure:**
 ```
@@ -117,6 +117,7 @@ src/
   cluster/                   # 集群层：Gossip 成员管理 + HTTP RPC + Leader Election
   pathmapper/                # 安全层：(bucket, key) → 文件路径映射，3 层遍历防护
   auth/                      # 认证层：Authenticator (AWS Sig V4 HMAC-SHA256 + Sig V2 HMAC-SHA1)
+  cors/                      # CORS 层：CORSMiddleware（origin 匹配、preflight OPTIONS）
   service/                   # 业务层：ObjectMeta、原子读写、Content-Type 检测
   metrics/                   # 可观测性层：Metrics (atomic 计数 + 文件系统扫描)
   ec/                        # 纠删码层：GF256 有限域 + ReedSolomon 编解码器
@@ -125,7 +126,7 @@ src/
 ```
 
 **Key types:**
-- `Config` (src/config) — port, root, access_key, secret_key, max_body_size (default 10MB), backend_type (default "local"), ECConfig, DistributedConfig
+- `Config` (src/config) — port, root, access_key, secret_key, max_body_size (default 10MB), backend_type (default "local"), region, CORSConfig, ECConfig, DistributedConfig
 - `StorageBackend` (src/storage) — 存储后端接口，定义 Bucket/Object 的 CRUD 操作
 - `LocalBackend` (src/storage) — 基于本地文件系统的 StorageBackend 实现
 - `ECBackend` (src/storage) — 基于纠删码的 StorageBackend 实现，K 数据分片 + M 校验分片多磁盘分布
@@ -137,6 +138,7 @@ src/
 - `S3APIError` (src/s3error) — S3 error type with code + HTTP status, XML serialization via `WriteS3Err`
 - `PathMapper` (src/pathmapper) — converts `(bucket, key)` to filesystem paths, 3-layer traversal defense
 - `Authenticator` (src/auth) — validates AWS Sig V4 (`AWS4-HMAC-SHA256`), Sig V2 (`AWS {key}:{sig}`), and Presigned URL (query params), dispatches by Authorization header prefix or X-Amz-Algorithm query param
+- `CORSConfig` (src/config) — CORS 跨域配置：Enabled、AllowedOrigins、AllowedMethods、AllowedHeaders、ExposeHeaders、MaxAge、AllowCredentials
 - `BucketLocks` (src/locks) — per-bucket `sync.Mutex` for concurrent write safety
 - `ObjectMeta` (src/service) — metadata struct, atomic write/read (`WriteFile`/`WriteMeta`/`ReadMeta`)
 - `BucketManager` (src/handler) — bucket CRUD + ListObjectsV2, write ops protected by per-bucket lock

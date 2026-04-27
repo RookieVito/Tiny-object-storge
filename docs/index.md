@@ -70,6 +70,7 @@
 | **CLI 客户端**（cmd/client/） | `usage.md`§2, `CLAUDE.md`§CLI Client |
 | **Web UI**（web/） | `usage.md`§1, `CLAUDE.md`§Web UI |
 | **Config**（config/） | `usage.md`§5, `architecture.md`§Key types |
+| **CORS**（cors/） | `middleware-chain.md`, `usage.md`§5, `architecture.md`§9 |
 | **Metrics** | `metrics.md`, `middleware-chain.md` |
 | **错误码**（s3error/） | `s3-protocol.md`, `usage.md`§4 |
 | **新增 Phase** | `TODO.md`, `CLAUDE.md`§Testing, `architecture.md`§Phase history, 本文件 |
@@ -88,6 +89,7 @@
 | `distributed` | consistent-hashing.md, gossip-protocol.md, quorum-read-write.md |
 | `error-handling` | s3-protocol.md |
 | `http-routing` | go-serve-mux.md, middleware-chain.md |
+| `cors` | middleware-chain.md, index.md, architecture.md, usage.md |
 | `multipart` | multipart-upload.md, storage-backend-interface.md |
 | `security` | aws-sig-v2.md, path-traversal.md |
 | `storage` | storage-backend-interface.md, atomic-writes.md, metadata-sidecar.md, erasure-coding.md |

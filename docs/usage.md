@@ -1,4 +1,4 @@
-<!-- tags: usage, cli, web-ui, api, configuration, testing -->
+<!-- tags: usage, cli, web-ui, api, configuration, testing, cors -->
 # 使用指南
 
 本文档介绍 Tiny Object Storage 的所有访问方式。
@@ -225,7 +225,11 @@ curl http://localhost:9000/_ui/
   "access_key": "minioadmin",
   "secret_key": "minioadmin",
   "max_body_size": 10485760,
-  "backend_type": "local"
+  "backend_type": "local",
+  "cors": {
+    "enabled": true,
+    "allowed_origins": ["*"]
+  }
 }
 ```
 
@@ -237,6 +241,14 @@ curl http://localhost:9000/_ui/
 | `secret_key` | string | `minioadmin` | Secret Key |
 | `max_body_size` | int64 | 10485760 (10MB) | 单次上传最大请求体 |
 | `backend_type` | string | `local` | 存储后端：`local` / `ec` / `distributed` |
+| `region` | string | `us-east-1` | AWS Sig V4 Region |
+| `cors.enabled` | bool | `true` | 是否启用 CORS |
+| `cors.allowed_origins` | []string | `["*"]` | 允许的 Origin 列表，`["*"]` 匹配所有 |
+| `cors.allowed_methods` | []string | `GET,PUT,POST,DELETE,HEAD,OPTIONS` | Preflight 允许的方法 |
+| `cors.allowed_headers` | []string | `Authorization,Content-Type,...` | Preflight 允许的请求头 |
+| `cors.expose_headers` | []string | `["ETag"]` | 响应中暴露给客户端的头 |
+| `cors.max_age` | int | `3600` | Preflight 缓存时间（秒） |
+| `cors.allow_credentials` | bool | `false` | 是否允许携带凭证 |
 
 CLI 参数优先级高于配置文件：
 

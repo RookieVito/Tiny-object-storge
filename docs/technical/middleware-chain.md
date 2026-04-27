@@ -1,4 +1,4 @@
-<!-- tags: http-routing, middleware, authentication, logging, observability -->
+<!-- tags: http-routing, middleware, authentication, logging, observability, cors -->
 # 中间件链与责任链模式
 
 ## 概述
@@ -26,6 +26,11 @@ HTTP 请求到达业务逻辑之前，需要经过一系列预处理：设置响
          │
          ▼
 ┌─────────────────┐
+│  CORSMiddleware  │  Origin 匹配、preflight OPTIONS → 204
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
 │  topMux          │  精确路径匹配（/_metrics、/_cluster）
 │  ├─ /_metrics    │
 │  ├─ /_cluster/   │
@@ -34,7 +39,7 @@ HTTP 请求到达业务逻辑之前，需要经过一系列预处理：设置响
          │ (匹配到 S3 路由)
          ▼
 ┌─────────────────┐
-│  authWrap        │  验证 AWS Sig V2 签名
+│  authWrap        │  验证 AWS Sig V4/V2 签名
 └────────┬────────┘
          │
          ▼
@@ -70,14 +75,14 @@ func s3Middleware(next http.Handler) http.Handler {
 
 ```go
 // 组合顺序：从外到内
-handler := s3Middleware(logMiddleware(metrics, topMux))
+handler := s3Middleware(logMiddleware(m, cors.CORSMiddleware(cfg.CORS, topMux)))
 ```
 
 等价于：
 
 ```
-请求 → s3Middleware → logMiddleware → topMux → 业务 handler
-响应 ← s3Middleware ← logMiddleware ← topMux ← 业务 handler
+请求 → s3Middleware → logMiddleware → CORSMiddleware → topMux → 业务 handler
+响应 ← s3Middleware ← logMiddleware ← CORSMiddleware ← topMux ← 业务 handler
 ```
 
 ## 3. 各中间件的职责
@@ -146,8 +151,9 @@ mux.HandleFunc("GET /{$}",      bm.ListBuckets)  // ← 无认证
 | 顺序 | 中间件 | 原因 |
 |------|--------|------|
 | 最外层 | s3Middleware | panic 恢复必须包裹所有内容，包括其他中间件的异常 |
-| 第二层 | logMiddleware | 需要捕获完整请求的耗时，包括认证和业务逻辑 |
-| 第三层 | topMux | 路由分发 |
+| 第二层 | logMiddleware | 需要捕获完整请求的耗时，包括 CORS、认证和业务逻辑 |
+| 第三层 | CORSMiddleware | preflight 请求在此拦截返回 204，不进入业务路由；正常请求设置 CORS 头后继续传递 |
+| 第四层 | topMux | 路由分发 |
 | 路由级 | authWrap | 在路由匹配后、业务逻辑前执行认证 |
 
 如果顺序错了会发生什么？

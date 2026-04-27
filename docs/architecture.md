@@ -1,4 +1,4 @@
-<!-- tags: architecture, overview, api, storage, distributed -->
+<!-- tags: architecture, overview, api, storage, distributed, cors, config -->
 # Tiny Object Storage - Architecture Design
 
 ## 1. Overview
@@ -20,7 +20,7 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 │                HTTP Server (net/http)                 │
 │            Go 1.22+ enhanced ServeMux                 │
 ├──────────────────────────────────────────────────────┤
-│  s3Middleware │ logMiddleware (slog)                  │
+│  s3Middleware │ logMiddleware (slog) │ CORSMiddleware      │
 │  authMiddleware (AWS Sig V4 + V2) │ Metrics (/_metrics)   │
 ├──────────────────────────────────────────────────────┤
 │  Router │ BucketManager │ ObjectManager │ MultipartManager │
@@ -177,7 +177,7 @@ topMux.Handle("/_cluster/",        clusterHandler) // 分布式模式集群端�
 topMux.Handle("/", mux)
 
 // 中间件链
-return s3Middleware(logMiddleware(metrics, topMux))
+return s3Middleware(logMiddleware(metrics, cors.CORSMiddleware(cfg.CORS, topMux)))
 ```
 
 ---
@@ -296,6 +296,8 @@ tiny-object-storge/
 │   │   ├── auth.go            # Authenticator Sig V4/V2/Presign 双认证（认证层）
 │   │   ├── v4.go              # Sig V4 签名计算与验证
 │   │   └── presign.go         # Presigned URL 生成与验证
+│   ├── cors/
+│   │   └── cors.go            # CORS 中间件：origin 匹配、preflight、Access-Control 头
 │   ├── service/
 │   │   └── metadata.go        # ObjectMeta、原子读写、Content-Type 检测（业务层）
 │   ├── metrics/
@@ -336,6 +338,8 @@ tiny-object-storge/
 │   └── phase8.go              # Phase 8 Multipart Upload 集成测试 (32)
 │   ├── phase9.go              # Phase 9 Range 请求测试 (60)
 │   └── phase10.go             # Phase 10 Sig V4 认证测试 (15)
+│   └── phase11.go             # Phase 11 Presigned URL 测试 (20)
+│   └── phase12.go             # Phase 12 CORS 配置测试 (12)
 ├── docs/
 │   ├── architecture.md
 │   ├── phase1-summary.md
@@ -348,6 +352,8 @@ tiny-object-storge/
 │   ├── phase8-summary.md
 │   ├── phase9-summary.md
 │   └── phase10-summary.md
+│   └── phase11-summary.md
+│   └── phase12-summary.md
 │   └── technical/
 └── TODO.md
 ```
@@ -365,7 +371,7 @@ service/        ← s3error
 metrics/        ← s3error
 cluster/        ← 无外部包依赖（仅 stdlib）
 storage/        ← pathmapper, service, ec, s3error, hash, cluster
-handler/        ← s3error, auth, locks, storage, metrics, config
+handler/        ← s3error, auth, locks, storage, metrics, config, cors
 cmd/server/     ← handler, config, storage
 ```
 
@@ -463,10 +469,16 @@ cmd/server/     ← handler, config, storage
 - [x] **CLI presign 子命令** — `tiny-storage presign <bucket/key>`
 - [x] 20 个集成测试
 
+### Phase 12: CORS 配置 ✅
+- [x] **CORSConfig**（config.go）— Enabled、AllowedOrigins/Methods/Headers、ExposeHeaders、MaxAge、AllowCredentials
+- [x] **CORSMiddleware**（cors/cors.go）— origin 匹配（精确 + 通配符 `*`）、preflight OPTIONS 返回 204
+- [x] **中间件链集成** — s3Middleware → logMiddleware → CORSMiddleware → topMux
+- [x] 默认启用（`Enabled: true`，`AllowedOrigins: ["*"]`）
+- [x] 12 个集成测试
+
 ### Future Enhancements (post-MVP)
 - EC/Distributed 后端 Multipart Upload 支持
 - Object versioning
 - Presigned URLs
-- CORS 配置
 - 磁盘健康监控和自动 rebalance
 - TTL 自动清理过期 upload

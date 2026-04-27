@@ -85,12 +85,13 @@
 - [x] **[Phase 10 遗留] buildCanonicalHeaders 移除冗余排序**
 - [x] **[Phase 10 遗留] 补充 V4 查询字符串、content-type 篾改、Range+V4 测试**
 
-## Phase 12: CORS 配置 🔜
+## Phase 12: CORS 配置 ✅
 
-- [ ] **CORS 中间件**（src/cors/cors.go）— origin 匹配、preflight 处理
-- [ ] **CORSConfig** — AllowedOrigins/Methods/Headers/MaxAge/AllowCredentials
-- [ ] **OPTIONS preflight** — 204 No Content + CORS 头
-- [ ] 集成测试 `test/phase12.go`
+- [x] **CORSConfig**（config.go）— Enabled、AllowedOrigins/Methods/Headers、ExposeHeaders、MaxAge、AllowCredentials
+- [x] **CORSMiddleware**（cors/cors.go）— origin 匹配（精确 + 通配符 `*`）、preflight OPTIONS 返回 204
+- [x] **中间件链集成** — s3Middleware → logMiddleware → CORSMiddleware → topMux
+- [x] 默认启用（`Enabled: true`，`AllowedOrigins: ["*"]`）
+- [x] 12 个集成测试 `test/phase12.go`
 
 ## Phase 13: EC/Distributed Multipart Upload 🔜
 
@@ -153,4 +154,5 @@ Phase 16 (磁盘健康)           → 依赖 Phase 5
 - Phase 9 总结：`docs/phase9-summary.md`
 - Phase 10 总结：`docs/phase10-summary.md`
 - Phase 11 总结：`docs/phase11-summary.md`
+- Phase 12 总结：`docs/phase12-summary.md`
 - 文档索引：`docs/index.md`

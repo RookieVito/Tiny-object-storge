@@ -7,6 +7,7 @@ import (
 
 	"tiny-object-storage/src/auth"
 	"tiny-object-storage/src/config"
+	"tiny-object-storage/src/cors"
 	"tiny-object-storage/src/locks"
 	"tiny-object-storage/src/metrics"
 	"tiny-object-storage/src/storage"
@@ -86,8 +87,8 @@ func NewRouter(backend storage.StorageBackend, cfg *config.Config, m *metrics.Me
 	}
 	topMux.Handle("/", mux)
 
-	// 中间件链：s3Middleware → logMiddleware → topMux
-	return s3Middleware(logMiddleware(m, topMux))
+	// 中间件链：s3Middleware → logMiddleware → corsMiddleware → topMux
+	return s3Middleware(logMiddleware(m, cors.CORSMiddleware(cfg.CORS, topMux)))
 }
 
 // authWrap 创建验证 AWS Sig V2 的中间件，验证通过后调用下一个 handler。

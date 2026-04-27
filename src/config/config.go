@@ -15,8 +15,40 @@ type Config struct {
 	MaxBodySize int64             `json:"max_body_size"`
 	BackendType string            `json:"backend_type"` // "local" | "ec" | "distributed"
 	Region      string            `json:"region"`        // AWS region for Sig V4（默认 "us-east-1"）
+	CORS        CORSConfig         `json:"cors"`         // CORS 配置
 	EC          ECConfig          `json:"ec"`            // EC 配置（仅 backend_type="ec" 时使用）
 	Distributed DistributedConfig `json:"distributed"`    // 分布式配置（仅 backend_type="distributed" 时使用）
+}
+
+// CORSConfig CORS 跨域配置。
+type CORSConfig struct {
+	Enabled          bool     `json:"enabled"`           // 默认 true
+	AllowedOrigins   []string `json:"allowed_origins"`
+	AllowedMethods   []string `json:"allowed_methods"`
+	AllowedHeaders   []string `json:"allowed_headers"`
+	ExposeHeaders    []string `json:"expose_headers"`
+	MaxAge           int      `json:"max_age"`
+	AllowCredentials bool     `json:"allow_credentials"`
+}
+
+// SetCORSDefaults 填充 CORS 零值字段为默认值。
+func (cc *CORSConfig) SetCORSDefaults() {
+	cc.Enabled = true
+	if cc.AllowedOrigins == nil {
+		cc.AllowedOrigins = []string{"*"}
+	}
+	if cc.AllowedMethods == nil {
+		cc.AllowedMethods = []string{"GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"}
+	}
+	if cc.AllowedHeaders == nil {
+		cc.AllowedHeaders = []string{"Authorization", "Content-Type", "X-Amz-Date", "X-Amz-Content-Sha256"}
+	}
+	if cc.ExposeHeaders == nil {
+		cc.ExposeHeaders = []string{"ETag"}
+	}
+	if cc.MaxAge == 0 {
+		cc.MaxAge = 3600
+	}
 }
 
 // ECConfig 纠删码配置。
@@ -87,6 +119,7 @@ func (c *Config) SetDefaults() {
 	if c.Region == "" {
 		c.Region = "us-east-1"
 	}
+	c.CORS.SetCORSDefaults()
 }
 
 // LoadConfig 读取 JSON 配置文件。文件不存在时返回默认值。
