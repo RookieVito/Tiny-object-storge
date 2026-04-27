@@ -2,8 +2,7 @@
 # 全量集成测试脚本
 # 用法：
 #   ./test/run.sh            # 运行所有测试（local + EC + distributed）
-#   ./test/run.sh local      # 仅运行 local 模式测试（Phase 1-5, 7, 8）
-#   ./test/run.sh ec         # 仅运行 EC 模式测试（Phase 5）
+#   ./test/run.sh local      # 仅运行 local 模式测试（Phase 1-10）
 #   ./test/run.sh distributed # 仅运行分布式测试（Phase 6）
 #   ./test/run.sh unit       # 仅运行单元测试
 
@@ -30,7 +29,7 @@ go build -o "$ROOT/server" ./cmd/server/ || fail "build failed"
 run_local_tests() {
     echo ""
     echo "========================================"
-    echo "  Local Mode Tests (Phase 1-5, 7, 8)"
+    echo "  Local Mode Tests (Phase 1-9)"
     echo "========================================"
 
     cleanup
@@ -39,7 +38,7 @@ run_local_tests() {
     SERVER_PIDS+=($!)
     sleep 1
 
-    echo "==> Running Phase 1-5, 7, 8..."
+    echo "==> Running Phase 1-9..."
     go run ./test/ 2>&1
     LOCAL_EXIT=$?
 

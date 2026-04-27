@@ -10,7 +10,7 @@
 
 **功能：** Bucket/Object 管理、前缀导航（文件夹视图）、文件拖拽上传（带进度条）、下载、删除。
 
-认证通过浏览器端 Web Crypto API 实现 AWS Sig V2 签名，凭据保存在 sessionStorage 中，关闭标签页后失效。
+认证通过浏览器端 Web Crypto API 实现 AWS Sig V4 签名，凭据保存在 sessionStorage 中，关闭标签页后失效。
 
 ### 首次使用
 
@@ -38,7 +38,7 @@ go run ./cmd/server/
 
 ## 2. Go CLI 客户端
 
-内置命令行客户端，自动处理 Sig V2 签名，支持上传/下载进度条。
+内置命令行客户端，自动处理 Sig V4 签名，支持上传/下载进度条。
 
 ### 配置
 
@@ -89,7 +89,7 @@ go run ./cmd/client/ rm s3://bucket/key          # 删除对象
 
 ---
 
-## 3. curl + AWS Sig V2
+## 3. curl + AWS Sig V4 / Sig V2
 
 直接通过 HTTP 请求调用 S3 API，需要手动构造签名头。
 
@@ -97,8 +97,16 @@ go run ./cmd/client/ rm s3://bucket/key          # 删除对象
 
 除 `GET /`（ListBuckets）、`GET /_metrics`、`/_ui/*` 外，所有请求需要签名。
 
-签名计算：
+支持两种签名方式：
 
+**Sig V4（推荐）：**
+```
+Authorization: AWS4-HMAC-SHA256 Credential=AKID/DateStamp/region/s3/aws4_request, SignedHeaders=host;x-amz-date, Signature=xxx
+X-Amz-Date: 20260101T000000Z
+X-Amz-Content-Sha256: UNSIGNED-PAYLOAD
+```
+
+**Sig V2（向后兼容）：**
 ```
 Signature = Base64(HMAC-SHA1(SecretKey, StringToSign))
 
@@ -108,6 +116,8 @@ StringToSign = HTTP-Method + "\n"
              + Date + "\n"
              + CanonicalizedResource
 ```
+
+> 服务器自动检测 Authorization 头前缀分发认证方式。
 
 ### 示例：创建 Bucket
 
@@ -266,8 +276,10 @@ CLI 参数优先级高于配置文件：
 | 400 | EntityTooSmall | 非 final part 小于 5MB |
 | 400 | InvalidPartNumber | partNumber 不在 1-10000 范围 |
 | 400 | InvalidPartOrder | parts 未按编号升序 |
+| 400 | MissingSecurityHeader | 缺少必要的安全头（如 X-Amz-Date） |
 | 403 | AccessDenied | 缺少 Authorization 头或 AccessKey 不匹配 |
 | 403 | SignatureDoesNotMatch | 签名验证失败 |
+| 403 | RequestTimeTooSkewed | X-Amz-Date 与服务器时间偏差 > 15min |
 | 404 | NoSuchBucket | Bucket 不存在 |
 | 404 | NoSuchKey | 对象不存在 |
 | 404 | NoSuchUpload | 指定的 multipart upload 不存在 |
@@ -277,6 +289,7 @@ CLI 参数优先级高于配置文件：
 | 501 | NotImplemented | 后端不支持的操作（如 EC/Distributed 的 multipart） |
 | 503 | WriteQuorumFailed | 分布式写入 quorum 未满足 |
 | 503 | ReadQuorumFailed | 分布式读取 quorum 未满足 |
+| 416 | InvalidRange | Range 请求范围无法满足 |
 
 错误响应格式：
 
@@ -296,7 +309,7 @@ CLI 参数优先级高于配置文件：
 # 启动服务器
 go run ./cmd/server/ &
 
-# 运行全量测试（Phase 1-8）
+# 运行全量测试（Phase 1-10）
 go run ./test/
 
 # 运行指定 Phase
@@ -308,6 +321,8 @@ go run ./test/ phase5    # 纠删码（需要 EC 配置启动服务器）
 go run ./test/ phase6    # 分布式（自动启动 3 节点）
 go run ./test/ phase7    # CLI 客户端集成测试
 go run ./test/ phase8    # Multipart Upload 集成测试
+go run ./test/ phase9    # Range 请求
+go run ./test/ phase10   # AWS Sig V4 认证
 
 # 单元测试（不需要服务器）
 go test ./src/ec/...

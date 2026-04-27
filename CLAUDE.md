@@ -36,7 +36,7 @@ go run ./cmd/client/ rm s3://bucket/key          # delete object
 ## Web UI
 
 浏览器访问 `http://localhost:9000/_ui/`。功能：Bucket/Object 管理、前缀导航、文件拖拽上传（带进度条）、下载、删除。
-Web UI 通过浏览器端 Web Crypto API 实现 AWS Sig V2 签名，是现有 S3 API 的纯客户端。
+Web UI 通过浏览器端 Web Crypto API 实现 AWS Sig V4 签名，是现有 S3 API 的纯客户端。
 
 ```bash
 # 开发模式（热重载）
@@ -94,15 +94,15 @@ go test ./src/cluster/...
 
 A minimal S3-compatible object storage. Multi-package Go project under `src/`, no frameworks.
 
-**Request flow:** `s3Middleware` (Server/Date headers, panic recovery) → `logMiddleware` (slog structured JSON log + metrics counters) → `authMiddleware` (AWS Sig V2 HMAC-SHA1) → `ServeMux` (method+path routing) → handler → `StorageBackend`.
+**Request flow:** `s3Middleware` (Server/Date headers, panic recovery) → `logMiddleware` (slog structured JSON log + metrics counters) → `authMiddleware` (AWS Sig V4 + V2) → `ServeMux` (method+path routing) → handler → `StorageBackend`.
 
 **Package structure:**
 ```
 cmd/server/                  # 服务器入口（config 加载、slog 初始化、graceful shutdown、Web UI embed）
 cmd/server/embed.go          # go:embed 声明前端静态资源，SPA fallback handler
-cmd/client/                  # CLI 客户端（Sig V2 签名、子命令、进度条）
+cmd/client/                  # CLI 客户端（Sig V4 签名、子命令、进度条）
 web/                         # React + TypeScript + Vite + Tailwind 前端
-  src/api/                   # S3 HTTP 客户端（Web Crypto API Sig V2 签名、XML 解析）
+  src/api/                   # S3 HTTP 客户端（Web Crypto API Sig V4 签名、XML 解析）
   src/components/            # UI 组件（LoginScreen、BucketList、ObjectBrowser、UploadDialog）
   src/hooks/                 # Auth 上下文管理
 src/
@@ -112,7 +112,7 @@ src/
   hash/                      # 数据分布层：一致性哈希环（Ketama 风格）
   cluster/                   # 集群层：Gossip 成员管理 + HTTP RPC + Leader Election
   pathmapper/                # 安全层：(bucket, key) → 文件路径映射，3 层遍历防护
-  auth/                      # 认证层：Authenticator (AWS Sig V2 HMAC-SHA1)
+  auth/                      # 认证层：Authenticator (AWS Sig V4 HMAC-SHA256 + Sig V2 HMAC-SHA1)
   service/                   # 业务层：ObjectMeta、原子读写、Content-Type 检测
   metrics/                   # 可观测性层：Metrics (atomic 计数 + 文件系统扫描)
   ec/                        # 纠删码层：GF256 有限域 + ReedSolomon 编解码器
@@ -132,7 +132,7 @@ src/
 - `GF256` (src/ec) — GF(2^8) 有限域算术（exp/log 查找表）
 - `S3APIError` (src/s3error) — S3 error type with code + HTTP status, XML serialization via `WriteS3Err`
 - `PathMapper` (src/pathmapper) — converts `(bucket, key)` to filesystem paths, 3-layer traversal defense
-- `Authenticator` (src/auth) — validates `Authorization: AWS {key}:{sig}` via HMAC-SHA1
+- `Authenticator` (src/auth) — validates AWS Sig V4 (`AWS4-HMAC-SHA256`) and Sig V2 (`AWS {key}:{sig}`), dispatches by Authorization header prefix
 - `BucketLocks` (src/locks) — per-bucket `sync.Mutex` for concurrent write safety
 - `ObjectMeta` (src/service) — metadata struct, atomic write/read (`WriteFile`/`WriteMeta`/`ReadMeta`)
 - `BucketManager` (src/handler) — bucket CRUD + ListObjectsV2, write ops protected by per-bucket lock

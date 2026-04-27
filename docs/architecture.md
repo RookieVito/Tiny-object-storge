@@ -20,7 +20,7 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 │            Go 1.22+ enhanced ServeMux                 │
 ├──────────────────────────────────────────────────────┤
 │  s3Middleware │ logMiddleware (slog)                  │
-│  authMiddleware (AWS Sig V2) │ Metrics (/_metrics)   │
+│  authMiddleware (AWS Sig V4 + V2) │ Metrics (/_metrics)   │
 ├──────────────────────────────────────────────────────┤
 │  Router │ BucketManager │ ObjectManager │ MultipartManager │
 │  BucketLocks (per-bucket mutex)                      │
@@ -181,14 +181,30 @@ return s3Middleware(logMiddleware(metrics, topMux))
 
 ---
 
-## 5. Authentication - AWS Signature V2 (Phase 2)
+## 5. Authentication - AWS Signature V4 + V2 (Phase 2, 10)
 
-### How It Works
+### V4 认证（Phase 10，推荐）
+
+1. Client includes `Authorization: AWS4-HMAC-SHA256 Credential=AKID/scope, SignedHeaders=headers, Signature=sig` header
+2. Signature = `HMAC-SHA256(SigningKey, StringToSign)`
+3. Signing Key 派生：`HMAC(HMAC(HMAC(HMAC("AWS4"+SecretKey, DateStamp), Region), "s3"), "aws4_request")`
+4. String to Sign = `Algorithm + "\n" + AmzDate + "\n" + Scope + "\n" + SHA256(CanonicalRequest)`
+5. Canonical Request = `Method + "\n" + CanonicalURI + "\n" + CanonicalQueryString + "\n" + CanonicalHeaders + "\n" + SignedHeaders + "\n" + PayloadHash`
+6. Payload 统一使用 `UNSIGNED-PAYLOAD`
+7. 时间偏移检查：`|X-Amz-Date - server time| > 15min` → 403
+
+### V2 认证（Phase 2，向后兼容）
 
 1. Client includes `Authorization: AWS {AccessKey}:{Signature}` header
 2. Signature = `HMAC-SHA1(SecretKey, StringToSign)`
 3. `StringToSign = HTTP-VERB + "\n" + Content-MD5 + "\n" + Content-Type + "\n" + Date + "\n" + CanonicalizedResource`
-4. `CanonicalizedResource = /{bucket}/{key}` (no query string for MVP)
+4. `CanonicalizedResource = /{bucket}/{key}`
+
+### 认证分发
+
+`Authenticate()` 按 Authorization 头前缀自动分发：
+- `AWS4-HMAC-SHA256` → V4 认证
+- `AWS ` → V2 认证（fallback）
 
 ---
 
@@ -266,7 +282,8 @@ tiny-object-storge/
 │   ├── pathmapper/
 │   │   └── pathmapper.go      # (bucket, key) → 文件路径映射（安全层）
 │   ├── auth/
-│   │   └── auth.go            # Authenticator AWS Sig V2（认证层）
+│   │   ├── auth.go            # Authenticator Sig V4/V2 双认证（认证层）
+│   │   └── v4.go              # Sig V4 签名计算与验证
 │   ├── service/
 │   │   └── metadata.go        # ObjectMeta、原子读写、Content-Type 检测（业务层）
 │   ├── metrics/
@@ -305,6 +322,8 @@ tiny-object-storge/
 │   ├── phase6.go              # Phase 6 分布式集成测试 (20)
 │   ├── phase7.go              # Phase 7 客户端工具集成测试 (19)
 │   └── phase8.go              # Phase 8 Multipart Upload 集成测试 (32)
+│   ├── phase9.go              # Phase 9 Range 请求测试 (60)
+│   └── phase10.go             # Phase 10 Sig V4 认证测试 (15)
 ├── docs/
 │   ├── architecture.md
 │   ├── phase1-summary.md
@@ -315,6 +334,8 @@ tiny-object-storge/
 │   ├── phase6-summary.md
 │   ├── phase7-summary.md
 │   ├── phase8-summary.md
+│   ├── phase9-summary.md
+│   └── phase10-summary.md
 │   └── technical/
 └── TODO.md
 ```
@@ -407,9 +428,26 @@ cmd/server/     ← handler, config, storage
 - [x] EC/Distributed 后端 stub（返回 ErrNotImplemented）
 - [x] 32 个集成测试
 
+### Phase 9: Range 请求 ✅
+- [x] **parseRangeHeader**（handler/helpers.go）— 支持 `bytes=start-end`、`bytes=start-`、`bytes=-suffix`
+- [x] **GetObject 206** — 单 range 返回 Partial Content + Content-Range + Accept-Ranges
+- [x] **HeadObject 206** — 同样支持 Range（仅 headers，无 body）
+- [x] **416 InvalidRange** — Range 无法满足时返回 Range Not Satisfiable
+- [x] 无效/多 range 回退 200 全量返回
+- [x] 60 个集成测试
+
+### Phase 10: AWS Sig V4 认证 ✅
+- [x] **Sig V4 签名**（auth/v4.go）— HMAC-SHA256 密钥派生、Canonical Request、String to Sign
+- [x] **V4/V2 双认证** — Authenticate() 按前缀分发，V2 作为 fallback
+- [x] **时间偏移检查** — `|X-Amz-Date - server time| > 15min` → 403
+- [x] **Config Region** — 新增 Region 字段（默认 `us-east-1`）
+- [x] **客户端升级** — CLI signer + Web UI signer 升级为 V4
+- [x] 15 个集成测试
+
 ### Future Enhancements (post-MVP)
 - EC/Distributed 后端 Multipart Upload 支持
 - Object versioning
-- AWS Sig V4 authentication
+- Presigned URLs
+- CORS 配置
 - 磁盘健康监控和自动 rebalance
 - TTL 自动清理过期 upload
