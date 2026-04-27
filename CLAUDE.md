@@ -29,6 +29,7 @@ go run ./cmd/client/ cp s3://b/key localfile     # download
 go run ./cmd/client/ cat s3://bucket/key         # print to stdout
 go run ./cmd/client/ stat s3://bucket/key        # show metadata
 go run ./cmd/client/ rm s3://bucket/key          # delete object
+go run ./cmd/client/ presign bucket/key          # generate presigned URL
 ```
 
 配置存储在 `~/.tiny-storage/config.json`，支持环境变量 `TOS_ENDPOINT` / `TOS_ACCESS_KEY` / `TOS_SECRET_KEY`。
@@ -77,6 +78,9 @@ go run ./test/ phase7
 
 # Multipart upload 集成测试
 go run ./test/ phase8
+
+# Presigned URL 集成测试
+go run ./test/ phase11
 
 # 一致性哈希 + Gossip 单元测试（不需要服务器）
 go test ./src/hash/...
@@ -132,7 +136,7 @@ src/
 - `GF256` (src/ec) — GF(2^8) 有限域算术（exp/log 查找表）
 - `S3APIError` (src/s3error) — S3 error type with code + HTTP status, XML serialization via `WriteS3Err`
 - `PathMapper` (src/pathmapper) — converts `(bucket, key)` to filesystem paths, 3-layer traversal defense
-- `Authenticator` (src/auth) — validates AWS Sig V4 (`AWS4-HMAC-SHA256`) and Sig V2 (`AWS {key}:{sig}`), dispatches by Authorization header prefix
+- `Authenticator` (src/auth) — validates AWS Sig V4 (`AWS4-HMAC-SHA256`), Sig V2 (`AWS {key}:{sig}`), and Presigned URL (query params), dispatches by Authorization header prefix or X-Amz-Algorithm query param
 - `BucketLocks` (src/locks) — per-bucket `sync.Mutex` for concurrent write safety
 - `ObjectMeta` (src/service) — metadata struct, atomic write/read (`WriteFile`/`WriteMeta`/`ReadMeta`)
 - `BucketManager` (src/handler) — bucket CRUD + ListObjectsV2, write ops protected by per-bucket lock

@@ -1,3 +1,4 @@
+<!-- tags: security, path-validation -->
 # 路径遍历防护
 
 ## 概述

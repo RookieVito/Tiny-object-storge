@@ -1,3 +1,4 @@
+<!-- tags: distributed, consistency -->
 # Quorum 读写与分布式一致性
 
 ## 概述

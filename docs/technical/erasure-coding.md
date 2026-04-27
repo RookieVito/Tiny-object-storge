@@ -1,3 +1,4 @@
+<!-- tags: storage, distributed, error-correction, encoding -->
 # 纠删码（Erasure Coding）
 
 ## 概述

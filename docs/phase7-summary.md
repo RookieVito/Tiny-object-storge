@@ -1,3 +1,4 @@
+<!-- tags: phase-summary -->
 # Phase 7 完成总结
 
 ## 1. 完成状态：全部完成

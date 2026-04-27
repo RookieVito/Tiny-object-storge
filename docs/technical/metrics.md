@@ -1,3 +1,4 @@
+<!-- tags: observability, monitoring -->
 # Metrics 端点设计
 
 ## 概述

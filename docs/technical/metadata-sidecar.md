@@ -1,3 +1,4 @@
+<!-- tags: storage, metadata -->
 # 元数据侧边文件设计
 
 ## 概述

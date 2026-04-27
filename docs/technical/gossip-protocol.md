@@ -1,3 +1,4 @@
+<!-- tags: distributed, membership, failure-detection -->
 # Gossip 协议与集群成员管理
 
 ## 概述

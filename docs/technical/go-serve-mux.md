@@ -1,3 +1,4 @@
+<!-- tags: http-routing, go, routing -->
 # Go ServeMux 路由模式
 
 ## 概述

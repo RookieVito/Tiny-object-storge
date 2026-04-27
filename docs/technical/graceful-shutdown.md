@@ -1,3 +1,4 @@
+<!-- tags: observability, lifecycle -->
 # 优雅关闭（Graceful Shutdown）
 
 ## 概述

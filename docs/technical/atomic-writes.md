@@ -1,3 +1,4 @@
+<!-- tags: storage, atomic-writes, crash-recovery -->
 # 原子写入与文件系统安全
 
 ## 概述

@@ -1,3 +1,4 @@
+<!-- tags: usage, cli, web-ui, api, configuration, testing -->
 # 使用指南
 
 本文档介绍 Tiny Object Storage 的所有访问方式。
@@ -118,6 +119,37 @@ StringToSign = HTTP-Method + "\n"
 ```
 
 > 服务器自动检测 Authorization 头前缀分发认证方式。
+
+### Presigned URL
+
+预签名 URL 将认证信息嵌入 URL 的 query 参数中，无需 Authorization 头即可访问私有对象。适用于浏览器直接下载、临时分享等场景。
+
+**生成预签名 URL：**
+```bash
+go run ./cmd/client/ presign mybucket/mykey               # 默认 GET，1 小时有效
+go run ./cmd/client/ presign -method PUT mybucket/mykey    # PUT 预签名
+go run ./cmd/client/ presign -expires 86400 mybucket/mykey # 24 小时有效
+```
+
+**使用预签名 URL：**
+```bash
+# 下载（GET）
+curl "$(go run ./cmd/client/ presign mybucket/mykey)"
+
+# 上传（PUT）
+PRESIGN_URL=$(go run ./cmd/client/ presign -method PUT mybucket/mykey)
+curl -X PUT "$PRESIGN_URL" -d "upload content" -H "Content-Type: text/plain"
+```
+
+**URL 参数说明：**
+| 参数 | 说明 |
+|------|------|
+| `X-Amz-Algorithm` | 固定 `AWS4-HMAC-SHA256` |
+| `X-Amz-Credential` | `AccessKey/Date/Region/s3/aws4_request` |
+| `X-Amz-Date` | 签名时间（ISO 8601 basic） |
+| `X-Amz-Expires` | 有效期（秒），最大 604800（7 天） |
+| `X-Amz-SignedHeaders` | 签名包含的头列表（通常 `host`） |
+| `X-Amz-Signature` | HMAC-SHA256 签名 |
 
 ### 示例：创建 Bucket
 
@@ -277,9 +309,11 @@ CLI 参数优先级高于配置文件：
 | 400 | InvalidPartNumber | partNumber 不在 1-10000 范围 |
 | 400 | InvalidPartOrder | parts 未按编号升序 |
 | 400 | MissingSecurityHeader | 缺少必要的安全头（如 X-Amz-Date） |
+| 400 | InvalidArgument | X-Amz-Expires 超出 1-604800 范围 |
 | 403 | AccessDenied | 缺少 Authorization 头或 AccessKey 不匹配 |
 | 403 | SignatureDoesNotMatch | 签名验证失败 |
 | 403 | RequestTimeTooSkewed | X-Amz-Date 与服务器时间偏差 > 15min |
+| 403 | AccessDenied | Presigned URL 已过期 |
 | 404 | NoSuchBucket | Bucket 不存在 |
 | 404 | NoSuchKey | 对象不存在 |
 | 404 | NoSuchUpload | 指定的 multipart upload 不存在 |
@@ -309,7 +343,7 @@ CLI 参数优先级高于配置文件：
 # 启动服务器
 go run ./cmd/server/ &
 
-# 运行全量测试（Phase 1-10）
+# 运行全量测试（Phase 1-11）
 go run ./test/
 
 # 运行指定 Phase
@@ -323,6 +357,7 @@ go run ./test/ phase7    # CLI 客户端集成测试
 go run ./test/ phase8    # Multipart Upload 集成测试
 go run ./test/ phase9    # Range 请求
 go run ./test/ phase10   # AWS Sig V4 认证
+go run ./test/ phase11   # Presigned URL
 
 # 单元测试（不需要服务器）
 go test ./src/ec/...

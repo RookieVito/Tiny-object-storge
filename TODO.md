@@ -71,22 +71,19 @@
 - [x] **时间偏移检查** — `|X-Amz-Date - server time| > 15min` → 403
 - [x] **Config Region** — 新增 Region 字段（默认 `us-east-1`）
 - [x] **客户端升级** — CLI signer + Web UI s3Client 升级为 V4
-- [x] 集成测试 `test/phase10.go`（15 个）
+- [x] 集成测试 `test/phase10.go`（21 个，含额外 V4 测试）
 
-## Phase 11: Presigned URL 🔜
+## Phase 11: Presigned URL ✅
 
-- [ ] **Presign 生成**（src/auth/presign.go）— GET/PUT 预签名 URL 生成
-- [ ] **Presign 验证** — Authenticate() 检测 query params 中的签名参数
-- [ ] **过期检查** — 当前时间 > X-Amz-Date + X-Amz-Expires → 403，最大 7 天
-- [ ] **CLI presign 子命令** — 命令行生成预签名 URL
-- [ ] 集成测试 `test/phase11.go`
-- [ ] **[Phase 10 遗留] 修复 object.go:84-85 重复 Content-Range** — GetObject 416 处第一行多余的 `contentRangeValue` 设置，应删除
-- [ ] **[Phase 10 遗留] Web UI signV4 直接接受 accessKey 参数** — 消除 client.ts 中的 regex 替换补丁，将 accessKey 传入 signV4 函数正确拼接 Credential
-- [ ] **[Phase 10 遗留] buildCanonicalHeaders 移除冗余排序** — signedHeadersList 已由客户端排序，服务端无需再次 sort
-- [ ] **[Phase 10 遗留] 补充 V4 带查询字符串的集成测试** — 覆盖 ?uploads、?delimiter= 等 multipart/list 操作
-- [ ] **[Phase 10 遗留] 补充 V4 content-type 篡改检测测试** — 签名包含 content-type 但请求头被篡改时应返回签名不匹配
-- [ ] **[Phase 10 遗留] 补充 Range + V4 组合测试** — 验证 V4 认证下 Range 请求（206/416）正常工作
-- [ ] **[Phase 10 遗留] 补充 Web UI V4 端到端测试** — 浏览器环境下验证 Web UI 的 V4 签名能通过服务端认证
+- [x] **Presign 生成**（src/auth/presign.go）— GET/PUT 预签名 URL 生成
+- [x] **Presign 验证** — Authenticate() 检测 query params 中的签名参数
+- [x] **过期检查** — 当前时间 > X-Amz-Date + X-Amz-Expires → 403，最大 7 天
+- [x] **CLI presign 子命令** — 命令行生成预签名 URL
+- [x] 集成测试 `test/phase11.go`（20 个）
+- [x] **[Phase 10 遗留] 修复 object.go 重复 Content-Range**
+- [x] **[Phase 10 遗留] Web UI signV4 直接接受 accessKey 参数**
+- [x] **[Phase 10 遗留] buildCanonicalHeaders 移除冗余排序**
+- [x] **[Phase 10 遗留] 补充 V4 查询字符串、content-type 篾改、Range+V4 测试**
 
 ## Phase 12: CORS 配置 🔜
 
@@ -155,3 +152,5 @@ Phase 16 (磁盘健康)           → 依赖 Phase 5
 - Phase 8 总结：`docs/phase8-summary.md`
 - Phase 9 总结：`docs/phase9-summary.md`
 - Phase 10 总结：`docs/phase10-summary.md`
+- Phase 11 总结：`docs/phase11-summary.md`
+- 文档索引：`docs/index.md`

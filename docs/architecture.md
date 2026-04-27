@@ -1,3 +1,4 @@
+<!-- tags: architecture, overview, api, storage, distributed -->
 # Tiny Object Storage - Architecture Design
 
 ## 1. Overview
@@ -205,6 +206,16 @@ return s3Middleware(logMiddleware(metrics, topMux))
 `Authenticate()` 按 Authorization 头前缀自动分发：
 - `AWS4-HMAC-SHA256` → V4 认证
 - `AWS ` → V2 认证（fallback）
+- 无 Authorization 头 + query 中 `X-Amz-Algorithm=AWS4-HMAC-SHA256` → Presigned URL 认证
+
+### Presigned URL（Phase 11）
+
+通过预签名 URL 实现无需 Authorization 头的临时访问授权：
+
+1. URL query 中嵌入签名参数：`X-Amz-Algorithm`, `X-Amz-Credential`, `X-Amz-Date`, `X-Amz-Expires`, `X-Amz-SignedHeaders`, `X-Amz-Signature`
+2. 签名算法与 V4 相同，但 canonical query string 包含所有 X-Amz-* 参数
+3. 过期检查：`server_time > X-Amz-Date + X-Amz-Expires` → 403
+4. 最大有效期 604800 秒（7 天）
 
 ---
 
@@ -282,8 +293,9 @@ tiny-object-storge/
 │   ├── pathmapper/
 │   │   └── pathmapper.go      # (bucket, key) → 文件路径映射（安全层）
 │   ├── auth/
-│   │   ├── auth.go            # Authenticator Sig V4/V2 双认证（认证层）
-│   │   └── v4.go              # Sig V4 签名计算与验证
+│   │   ├── auth.go            # Authenticator Sig V4/V2/Presign 双认证（认证层）
+│   │   ├── v4.go              # Sig V4 签名计算与验证
+│   │   └── presign.go         # Presigned URL 生成与验证
 │   ├── service/
 │   │   └── metadata.go        # ObjectMeta、原子读写、Content-Type 检测（业务层）
 │   ├── metrics/
@@ -443,6 +455,13 @@ cmd/server/     ← handler, config, storage
 - [x] **Config Region** — 新增 Region 字段（默认 `us-east-1`）
 - [x] **客户端升级** — CLI signer + Web UI signer 升级为 V4
 - [x] 15 个集成测试
+
+### Phase 11: Presigned URL ✅
+- [x] **PresignV4 生成**（auth/presign.go）— GET/PUT 预签名 URL，query params 嵌入签名
+- [x] **Presign 验证** — Authenticate() 检测 query 中 X-Amz-Algorithm 分发
+- [x] **过期检查** — `server_time > X-Amz-Date + X-Amz-Expires` → 403，最大 7 天
+- [x] **CLI presign 子命令** — `tiny-storage presign <bucket/key>`
+- [x] 20 个集成测试
 
 ### Future Enhancements (post-MVP)
 - EC/Distributed 后端 Multipart Upload 支持

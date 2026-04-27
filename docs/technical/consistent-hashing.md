@@ -1,3 +1,4 @@
+<!-- tags: distributed, hashing, data-partitioning -->
 # 一致性哈希（Consistent Hashing）
 
 ## 概述

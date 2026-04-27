@@ -1,3 +1,4 @@
+<!-- tags: authentication, sig-v2, security, hmac -->
 # AWS Signature Version 2 认证
 
 ## 概述
