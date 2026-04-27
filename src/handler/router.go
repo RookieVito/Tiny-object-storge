@@ -20,7 +20,7 @@ func NewRouter(backend storage.StorageBackend, cfg *config.Config, m *metrics.Me
 	bm := NewBucketManager(backend, bucketLocks)
 	om := NewObjectManager(backend, bucketLocks, cfg.MaxBodySize)
 	mm := NewMultipartManager(backend, bucketLocks, cfg.MaxBodySize)
-	a := auth.NewAuthenticator(cfg.AccessKey, cfg.SecretKey)
+	a := auth.NewAuthenticatorWithRegion(cfg.AccessKey, cfg.SecretKey, cfg.Region)
 
 	mux := http.NewServeMux()
 

@@ -14,6 +14,7 @@ type Config struct {
 	SecretKey   string            `json:"secret_key"`
 	MaxBodySize int64             `json:"max_body_size"`
 	BackendType string            `json:"backend_type"` // "local" | "ec" | "distributed"
+	Region      string            `json:"region"`        // AWS region for Sig V4（默认 "us-east-1"）
 	EC          ECConfig          `json:"ec"`            // EC 配置（仅 backend_type="ec" 时使用）
 	Distributed DistributedConfig `json:"distributed"`    // 分布式配置（仅 backend_type="distributed" 时使用）
 }
@@ -82,6 +83,9 @@ func (c *Config) SetDefaults() {
 	}
 	if c.BackendType == "" {
 		c.BackendType = "local"
+	}
+	if c.Region == "" {
+		c.Region = "us-east-1"
 	}
 }
 

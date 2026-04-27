@@ -10,18 +10,24 @@ import (
 	"tiny-object-storage/src/s3error"
 )
 
-// Authenticator 验证 AWS Signature V2 请求。
+// Authenticator 验证 AWS Signature V2/V4 请求。
 type Authenticator struct {
 	accessKey string
 	secretKey string
+	region    string
 }
 
 // NewAuthenticator 使用给定凭证创建 Authenticator。
 func NewAuthenticator(accessKey, secretKey string) *Authenticator {
-	return &Authenticator{accessKey: accessKey, secretKey: secretKey}
+	return &Authenticator{accessKey: accessKey, secretKey: secretKey, region: "us-east-1"}
 }
 
-// Authenticate 验证 Authorization 头是否符合 Sig V2。
+// NewAuthenticatorWithRegion 使用给定凭证和 region 创建 Authenticator。
+func NewAuthenticatorWithRegion(accessKey, secretKey, region string) *Authenticator {
+	return &Authenticator{accessKey: accessKey, secretKey: secretKey, region: region}
+}
+
+// Authenticate 验证 Authorization 头，按前缀分发 V4 或 V2。
 // 成功返回 nil，失败返回 *s3error.S3APIError。
 func (a *Authenticator) Authenticate(r *http.Request, bucket, key string) *s3error.S3APIError {
 	authHeader := r.Header.Get("Authorization")
@@ -29,6 +35,12 @@ func (a *Authenticator) Authenticate(r *http.Request, bucket, key string) *s3err
 		return s3error.ErrAccessDenied
 	}
 
+	// Sig V4
+	if strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256") {
+		return a.authenticateV4(r, bucket, key)
+	}
+
+	// Sig V2 fallback
 	if !strings.HasPrefix(authHeader, "AWS ") {
 		return s3error.ErrAccessDenied
 	}

@@ -1,4 +1,4 @@
-import { signV2 } from './signer';
+import { signV4 } from './signer';
 import type { S3Error } from './types';
 import { parseError } from './xml-parser';
 
@@ -20,6 +20,25 @@ class S3ClientError extends Error {
   }
 }
 
+async function buildAuthHeaders(
+  config: S3Config,
+  method: string,
+  contentType: string,
+  canonicalResource: string,
+): Promise<Record<string, string>> {
+  const { authorization, amzDate, contentSha256 } = await signV4(
+    method, contentType, canonicalResource, config.secretKey,
+  );
+  return {
+    Authorization: authorization.replace(
+      /Credential=([^/]+)/,
+      `Credential=${config.accessKey}`,
+    ),
+    'X-Amz-Date': amzDate,
+    'X-Amz-Content-Sha256': contentSha256,
+  };
+}
+
 export async function s3Request(
   config: S3Config,
   method: string,
@@ -27,14 +46,9 @@ export async function s3Request(
   options?: { body?: BodyInit; contentType?: string },
 ): Promise<{ ok: boolean; status: number; body: string; headers: Headers }> {
   const contentType = options?.contentType ?? '';
-  // canonicalResource 只包含路径，不含查询参数（与服务器侧 auth.go 一致）
   const canonicalResource = path.split('?')[0];
-  const { signature, date } = await signV2(method, contentType, canonicalResource, config.secretKey);
+  const headers = await buildAuthHeaders(config, method, contentType, canonicalResource);
 
-  const headers: Record<string, string> = {
-    Authorization: `AWS ${config.accessKey}:${signature}`,
-    'X-Amz-Date': date,
-  };
   if (contentType) {
     headers['Content-Type'] = contentType;
   }
@@ -81,12 +95,14 @@ export function uploadObject(
 
     xhr.onerror = () => reject(new Error('Network error'));
 
-    // 异步签名后发送。
-    signV2('PUT', file.type || 'application/octet-stream', path.split('?')[0], config.secretKey)
-      .then(({ signature, date }) => {
-        xhr.setRequestHeader('Authorization', `AWS ${config.accessKey}:${signature}`);
-        xhr.setRequestHeader('X-Amz-Date', date);
-        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    const contentType = file.type || 'application/octet-stream';
+    const canonicalResource = path.split('?')[0];
+    buildAuthHeaders(config, 'PUT', contentType, canonicalResource)
+      .then((headers) => {
+        for (const [k, v] of Object.entries(headers)) {
+          xhr.setRequestHeader(k, v);
+        }
+        xhr.setRequestHeader('Content-Type', contentType);
         xhr.send(file);
       })
       .catch(reject);
@@ -105,14 +121,11 @@ export async function downloadObject(
   const path = `/${bucket}/${key}`;
   const contentType = '';
   const canonicalResource = path.split('?')[0];
-  const { signature, date } = await signV2('GET', contentType, canonicalResource, config.secretKey);
+  const headers = await buildAuthHeaders(config, 'GET', contentType, canonicalResource);
 
   const resp = await fetch(`${config.endpoint}${path}`, {
     method: 'GET',
-    headers: {
-      Authorization: `AWS ${config.accessKey}:${signature}`,
-      'X-Amz-Date': date,
-    },
+    headers,
   });
   if (!resp.ok) {
     const body = await resp.text();
