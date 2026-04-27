@@ -138,7 +138,7 @@ src/
 - `S3APIError` (src/s3error) — S3 error type with code + HTTP status, XML serialization via `WriteS3Err`
 - `PathMapper` (src/pathmapper) — converts `(bucket, key)` to filesystem paths, 3-layer traversal defense
 - `Authenticator` (src/auth) — validates AWS Sig V4 (`AWS4-HMAC-SHA256`), Sig V2 (`AWS {key}:{sig}`), and Presigned URL (query params), dispatches by Authorization header prefix or X-Amz-Algorithm query param
-- `CORSConfig` (src/config) — CORS 跨域配置：Enabled、AllowedOrigins、AllowedMethods、AllowedHeaders、ExposeHeaders、MaxAge、AllowCredentials
+- `CORSConfig` (src/config) — CORS 跨域配置：AllowedOrigins（非空启用）、AllowedMethods、AllowedHeaders、ExposeHeaders、MaxAge、AllowCredentials
 - `BucketLocks` (src/locks) — per-bucket `sync.Mutex` for concurrent write safety
 - `ObjectMeta` (src/service) — metadata struct, atomic write/read (`WriteFile`/`WriteMeta`/`ReadMeta`)
 - `BucketManager` (src/handler) — bucket CRUD + ListObjectsV2, write ops protected by per-bucket lock

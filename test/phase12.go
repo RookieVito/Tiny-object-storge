@@ -48,9 +48,10 @@ func testPhase12() {
 	_, _, h = DoWithHeaders("GET", "/", "", "", map[string]string{"Origin": "http://localhost:5173"})
 	Pass("ListBuckets + Origin → Allow-Origin is set", h.Get("Access-Control-Allow-Origin") != "")
 
-	// OPTIONS 返回 204 状态码。
-	s, _, _ := DoWithHeaders("OPTIONS", "/"+bucket+"/"+key, "", "", map[string]string{"Origin": "http://localhost:5173"})
+	// OPTIONS 返回 204 状态码 + 空 body。
+	s, b, _ := DoWithHeaders("OPTIONS", "/"+bucket+"/"+key, "", "", map[string]string{"Origin": "http://localhost:5173"})
 	Pass("OPTIONS preflight → 204", s == 204)
+	Pass("OPTIONS preflight → empty body", b == "")
 
 	// OPTIONS 包含 Allow-Methods 和 Allow-Headers。
 	_, _, h = DoWithHeaders("OPTIONS", "/"+bucket, "", "", map[string]string{"Origin": "http://localhost:5173"})

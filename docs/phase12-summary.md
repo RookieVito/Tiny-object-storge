@@ -25,8 +25,7 @@
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `Enabled` | bool | `true` | 是否启用 CORS |
-| `AllowedOrigins` | []string | `["*"]` | 允许的 Origin，`"*"` 匹配所有 |
+| `AllowedOrigins` | []string | `["*"]` | 允许的 Origin（非空启用 CORS，`[]` 禁用） |
 | `AllowedMethods` | []string | GET,PUT,POST,DELETE,HEAD,OPTIONS | Preflight 允许的方法 |
 | `AllowedHeaders` | []string | Authorization,Content-Type,X-Amz-Date,X-Amz-Content-Sha256 | Preflight 允许的请求头 |
 | `ExposeHeaders` | []string | `["ETag"]` | 响应中暴露给 JS 的头 |
@@ -35,9 +34,9 @@
 
 ### CORSMiddleware 逻辑
 
-1. `Enabled=false` 或 `AllowedOrigins` 为空 → 透传，不处理
+1. `AllowedOrigins` 为空 → 透传，不处理（CORS 禁用）
 2. 无 `Origin` 请求头 → 透传
-3. Origin 不匹配 → 透传
+3. Origin 不匹配 → 添加 `Vary: Origin`，透传
 4. OPTIONS preflight → 设置 CORS 头 + 返回 204
 5. 正常请求 → 设置 `Allow-Origin`、`Expose-Headers` → 透传到后续中间件
 
@@ -46,6 +45,7 @@
 - `"*"` 通配符匹配任意 origin
 - 精确匹配 origin 字符串
 - `AllowCredentials=true` 时，通配符返回具体 origin 而非 `"*"`
+- 启动时 `AllowCredentials=true` + 通配符会输出安全警告日志
 
 ### 中间件位置
 

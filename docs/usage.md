@@ -227,7 +227,6 @@ curl http://localhost:9000/_ui/
   "max_body_size": 10485760,
   "backend_type": "local",
   "cors": {
-    "enabled": true,
     "allowed_origins": ["*"]
   }
 }
@@ -242,8 +241,7 @@ curl http://localhost:9000/_ui/
 | `max_body_size` | int64 | 10485760 (10MB) | 单次上传最大请求体 |
 | `backend_type` | string | `local` | 存储后端：`local` / `ec` / `distributed` |
 | `region` | string | `us-east-1` | AWS Sig V4 Region |
-| `cors.enabled` | bool | `true` | 是否启用 CORS |
-| `cors.allowed_origins` | []string | `["*"]` | 允许的 Origin 列表，`["*"]` 匹配所有 |
+| `cors.allowed_origins` | []string | `["*"]` | 允许的 Origin 列表（非空启用 CORS），`["*"]` 匹配所有，`[]` 禁用 |
 | `cors.allowed_methods` | []string | `GET,PUT,POST,DELETE,HEAD,OPTIONS` | Preflight 允许的方法 |
 | `cors.allowed_headers` | []string | `Authorization,Content-Type,...` | Preflight 允许的请求头 |
 | `cors.expose_headers` | []string | `["ETag"]` | 响应中暴露给客户端的头 |

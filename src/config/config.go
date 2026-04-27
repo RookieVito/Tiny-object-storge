@@ -21,8 +21,8 @@ type Config struct {
 }
 
 // CORSConfig CORS 跨域配置。
+// AllowedOrigins 非空时启用 CORS；设置为 [] 或不配置均视为禁用。
 type CORSConfig struct {
-	Enabled          bool     `json:"enabled"`           // 默认 true
 	AllowedOrigins   []string `json:"allowed_origins"`
 	AllowedMethods   []string `json:"allowed_methods"`
 	AllowedHeaders   []string `json:"allowed_headers"`
@@ -33,7 +33,6 @@ type CORSConfig struct {
 
 // SetCORSDefaults 填充 CORS 零值字段为默认值。
 func (cc *CORSConfig) SetCORSDefaults() {
-	cc.Enabled = true
 	if cc.AllowedOrigins == nil {
 		cc.AllowedOrigins = []string{"*"}
 	}

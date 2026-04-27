@@ -1,8 +1,9 @@
 package cors
 
 import (
-	"fmt"
+	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"tiny-object-storage/src/config"
@@ -10,8 +11,12 @@ import (
 
 // CORSMiddleware 返回处理 CORS 的 HTTP 中间件。
 func CORSMiddleware(cfg config.CORSConfig, next http.Handler) http.Handler {
-	if !cfg.Enabled || len(cfg.AllowedOrigins) == 0 {
+	if len(cfg.AllowedOrigins) == 0 {
 		return next
+	}
+
+	if cfg.AllowCredentials && hasWildcard(cfg.AllowedOrigins) {
+		slog.Warn("CORS: AllowCredentials=true with wildcard origin is insecure; specify explicit origins")
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -21,16 +26,18 @@ func CORSMiddleware(cfg config.CORSConfig, next http.Handler) http.Handler {
 			return
 		}
 
-		if !matchOrigin(cfg.AllowedOrigins, origin) {
+		matched := matchOrigin(cfg.AllowedOrigins, origin)
+		if !matched {
+			w.Header().Add("Vary", "Origin")
 			next.ServeHTTP(w, r)
 			return
 		}
 
 		if r.Method == http.MethodOptions {
-			w.Header().Set("Access-Control-Allow-Origin", allowOriginValue(cfg, origin))
+			w.Header().Set("Access-Control-Allow-Origin", allowOriginValue(cfg, origin, matched))
 			w.Header().Set("Access-Control-Allow-Methods", strings.Join(cfg.AllowedMethods, ", "))
 			w.Header().Set("Access-Control-Allow-Headers", strings.Join(cfg.AllowedHeaders, ", "))
-			w.Header().Set("Access-Control-Max-Age", fmtMaxAge(cfg.MaxAge))
+			w.Header().Set("Access-Control-Max-Age", strconv.Itoa(cfg.MaxAge))
 			if cfg.AllowCredentials {
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
@@ -38,7 +45,7 @@ func CORSMiddleware(cfg config.CORSConfig, next http.Handler) http.Handler {
 			return
 		}
 
-		w.Header().Set("Access-Control-Allow-Origin", allowOriginValue(cfg, origin))
+		w.Header().Set("Access-Control-Allow-Origin", allowOriginValue(cfg, origin, matched))
 		if cfg.AllowCredentials {
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 		}
@@ -63,19 +70,27 @@ func matchOrigin(allowed []string, origin string) bool {
 	return false
 }
 
+// hasWildcard 检查允许列表是否包含通配符。
+func hasWildcard(allowed []string) bool {
+	for _, a := range allowed {
+		if a == "*" {
+			return true
+		}
+	}
+	return false
+}
+
 // allowOriginValue 返回 Access-Control-Allow-Origin 的值。
-// 通配符 "*" 时不返回具体 origin（浏览器行为）。
-func allowOriginValue(cfg config.CORSConfig, origin string) string {
-	if matchOrigin(cfg.AllowedOrigins, "*") {
+// 通配符 "*" 时不返回具体 origin（浏览器行为），除非 AllowCredentials。
+func allowOriginValue(cfg config.CORSConfig, origin string, matched bool) string {
+	if !matched {
+		return ""
+	}
+	if hasWildcard(cfg.AllowedOrigins) {
 		if !cfg.AllowCredentials {
 			return "*"
 		}
 		return origin
 	}
 	return origin
-}
-
-// fmtMaxAge 返回 MaxAge 的字符串表示。
-func fmtMaxAge(maxAge int) string {
-	return fmt.Sprintf("%d", maxAge)
 }
