@@ -32,12 +32,7 @@ func cmdPresign(args []string) {
 	}
 
 	target := fs.Arg(0)
-	var resource string
-	if idx := strings.Index(target, "/"); idx > 0 {
-		resource = "/" + target
-	} else {
-		resource = "/" + target + "/"
-	}
+	resource := "/" + target
 
 	host := cfg.Endpoint
 	if strings.HasPrefix(host, "http://") {

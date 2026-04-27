@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"tiny-object-storage/src/s3error"
@@ -23,7 +24,8 @@ type PresignResult struct {
 
 // PresignV4 生成 Sig V4 预签名 URL。
 // host 是服务器外部地址（如 "localhost:9000"），不含 scheme。
-func (a *Authenticator) PresignV4(method, bucket, key string, expires time.Duration, host string) (*PresignResult, error) {
+// scheme 为 "http" 或 "https"（默认 "http"）。
+func (a *Authenticator) PresignV4(method, bucket, key string, expires time.Duration, host string, scheme ...string) (*PresignResult, error) {
 	expiresSec := int64(expires.Seconds())
 	if expiresSec < 1 || expiresSec > maxPresignExpires {
 		return nil, fmt.Errorf("X-Amz-Expires must be between 1 and %d", maxPresignExpires)
@@ -69,8 +71,12 @@ func (a *Authenticator) PresignV4(method, bucket, key string, expires time.Durat
 	signature := hex.EncodeToString(hmacSHA256(signingKey, []byte(stringToSign)))
 
 	// 构建完整 URL。
+	s := "http"
+	if len(scheme) > 0 && scheme[0] != "" {
+		s = scheme[0]
+	}
 	qs.Set("X-Amz-Signature", signature)
-	fullURL := fmt.Sprintf("http://%s%s?%s", host, canonicalURI, qs.Encode())
+	fullURL := fmt.Sprintf("%s://%s%s?%s", s, host, canonicalURI, qs.Encode())
 
 	return &PresignResult{
 		URL:            fullURL,
@@ -116,6 +122,9 @@ func (a *Authenticator) authenticatePresigned(r *http.Request, bucket, key strin
 	}
 	if accessKey != a.accessKey {
 		return s3error.ErrAccessDenied
+	}
+	if region != a.region {
+		return s3error.ErrSignatureDoesNotMatch
 	}
 
 	// 解析 SignedHeaders。
@@ -165,25 +174,11 @@ func splitSignedHeaders(s string) []string {
 	if s == "" {
 		return nil
 	}
-	parts := []string{}
-	for _, p := range splitString(s, ';') {
+	var parts []string
+	for _, p := range strings.Split(s, ";") {
 		if p != "" {
 			parts = append(parts, p)
 		}
 	}
-	return parts
-}
-
-// splitString 按分隔符拆分字符串。
-func splitString(s string, sep byte) []string {
-	var parts []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == sep {
-			parts = append(parts, s[start:i])
-			start = i + 1
-		}
-	}
-	parts = append(parts, s[start:])
 	return parts
 }

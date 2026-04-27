@@ -365,11 +365,10 @@ func DoV4WithHeaders(method, path, body, contentType string, extra map[string]st
 
 // --- Presign helpers ---
 
-// PresignURL 生成 Sig V4 预签名 URL（测试用）。
-func PresignURL(method, path string, expires int64) string {
-	now := time.Now().UTC()
-	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+// presignURLAtTime 使用指定时间生成预签名 URL。
+func presignURLAtTime(method, path string, expires int64, t time.Time) string {
+	amzDate := t.UTC().Format("20060102T150405Z")
+	dateStamp := t.UTC().Format("20060102")
 	scope := fmt.Sprintf("%s/%s/%s/%s", dateStamp, v4Region, v4Svc, v4Req)
 	credential := fmt.Sprintf("%s/%s", AccessKey, scope)
 
@@ -420,6 +419,11 @@ func PresignURL(method, path string, expires int64) string {
 
 	qs.Set("X-Amz-Signature", signature)
 	return fmt.Sprintf("%s%s?%s", BaseURL, canonicalURI, qs.Encode())
+}
+
+// PresignURL 生成 Sig V4 预签名 URL（测试用）。
+func PresignURL(method, path string, expires int64) string {
+	return presignURLAtTime(method, path, expires, time.Now())
 }
 
 // DoPresigned 发送请求到预签名 URL（不带 Authorization 头）。

@@ -1,10 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
-	"fmt"
-	"net/url"
-	"sort"
 	"strings"
 	"time"
 )
@@ -107,60 +103,4 @@ func testPhase11() {
 	Do2("DELETE", "/"+bucket, "", "")
 
 	P("INFO: Phase 11 Presigned URL complete")
-}
-
-// presignURLAtTime 使用指定的时间生成预签名 URL（用于过期测试）。
-func presignURLAtTime(method, path string, expires int64, t time.Time) string {
-	amzDate := t.UTC().Format("20060102T150405Z")
-	dateStamp := t.UTC().Format("20060102")
-	scope := fmt.Sprintf("%s/%s/%s/%s", dateStamp, v4Region, v4Svc, v4Req)
-	credential := fmt.Sprintf("%s/%s", AccessKey, scope)
-
-	signedHeaders := "host"
-	qs := url.Values{}
-	qs.Set("X-Amz-Algorithm", v4Alg)
-	qs.Set("X-Amz-Credential", credential)
-	qs.Set("X-Amz-Date", amzDate)
-	qs.Set("X-Amz-Expires", fmt.Sprintf("%d", expires))
-	qs.Set("X-Amz-SignedHeaders", signedHeaders)
-
-	keys := make([]string, 0, len(qs))
-	for k := range qs {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	qsParts := make([]string, 0, len(keys))
-	for _, k := range keys {
-		for _, v := range qs[k] {
-			qsParts = append(qsParts, url.QueryEscape(k)+"="+url.QueryEscape(v))
-		}
-	}
-	canonicalQS := strings.Join(qsParts, "&")
-
-	canonicalHeaders := "host:localhost:9000\n"
-	canonicalURI := v4URI(path)
-
-	canonicalRequest := strings.Join([]string{
-		method,
-		canonicalURI,
-		canonicalQS,
-		canonicalHeaders,
-		"",
-		signedHeaders,
-		"UNSIGNED-PAYLOAD",
-	}, "\n")
-
-	stringToSign := strings.Join([]string{
-		v4Alg,
-		amzDate,
-		scope,
-		v4HexSHA256([]byte(canonicalRequest)),
-	}, "\n")
-
-	signingKey := v4DeriveKey(SecretKey, dateStamp, v4Region)
-	signature := hex.EncodeToString(v4HmacSHA256(signingKey, []byte(stringToSign)))
-
-	qs.Set("X-Amz-Signature", signature)
-	return fmt.Sprintf("%s%s?%s", BaseURL, canonicalURI, qs.Encode())
 }
