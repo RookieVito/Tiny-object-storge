@@ -38,6 +38,13 @@ var (
 	ErrInvalidPartOrder  = &S3APIError{"InvalidPartOrder", "The list of parts was not in ascending order. Parts must be ordered by part number.", http.StatusBadRequest}
 	ErrInvalidPartNumber = &S3APIError{"InvalidPartNumber", "The part number must be between 1 and 10000, inclusive.", http.StatusBadRequest}
 	ErrNotImplemented    = &S3APIError{"NotImplemented", "This functionality is not implemented.", http.StatusNotImplemented}
+
+	// Range 请求错误。
+	ErrInvalidRange = &S3APIError{"InvalidRange", "The requested range is not satisfiable.", http.StatusRequestedRangeNotSatisfiable}
+
+	// Sig V4 认证错误。
+	ErrRequestTimeTooSkewed  = &S3APIError{"RequestTimeTooSkewed", "The difference between the request time and the server time is too large.", http.StatusForbidden}
+	ErrMissingSecurityHeader = &S3APIError{"MissingSecurityHeader", "Your request is missing a required header.", http.StatusBadRequest}
 )
 
 // s3ErrorResponse 是 S3 错误的 XML 信封。

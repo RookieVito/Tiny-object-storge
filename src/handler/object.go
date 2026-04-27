@@ -76,10 +76,52 @@ func (om *ObjectManager) GetObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Range 请求处理。
+	rangeHeader := r.Header.Get("Range")
+	if rangeHeader != "" {
+		ranges, invalid := parseRangeHeader(rangeHeader, int64(len(data)))
+		if invalid {
+			w.Header().Set("Content-Range", contentRangeValue(0, 0, int64(len(data))))
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", int64(len(data))))
+			s3error.WriteS3Err(w, s3error.ErrInvalidRange, r.URL.Path)
+			return
+		}
+		if len(ranges) == 0 {
+			// 格式错误，回退到 200 全量返回
+			writeFullObject(w, meta, data)
+			return
+		}
+		// 只支持单 range（多 range 回退到 200）
+		if len(ranges) == 1 {
+			br := ranges[0]
+			end := br.end
+			if end == -1 || end >= int64(len(data)) {
+				end = int64(len(data)) - 1
+			}
+			sliced := data[br.start : end+1]
+			w.Header().Set("Content-Type", meta.ContentType)
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", end-br.start+1))
+			w.Header().Set("Content-Range", contentRangeValue(br.start, end, int64(len(data))))
+			w.Header().Set("ETag", meta.ETag)
+			w.Header().Set("Last-Modified", meta.LastModified.UTC().Format(http.TimeFormat))
+			w.Header().Set("Accept-Ranges", "bytes")
+			w.WriteHeader(http.StatusPartialContent)
+			w.Write(sliced)
+			return
+		}
+		// 多 range → 回退到 200 全量返回
+	}
+
+	writeFullObject(w, meta, data)
+}
+
+// writeFullObject 写入完整的对象响应（200 OK）。
+func writeFullObject(w http.ResponseWriter, meta *service.ObjectMeta, data []byte) {
 	w.Header().Set("Content-Type", meta.ContentType)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", meta.Size))
 	w.Header().Set("ETag", meta.ETag)
 	w.Header().Set("Last-Modified", meta.LastModified.UTC().Format(http.TimeFormat))
+	w.Header().Set("Accept-Ranges", "bytes")
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
 }
@@ -100,9 +142,33 @@ func (om *ObjectManager) HeadObject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", meta.ContentType)
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", meta.Size))
 	w.Header().Set("ETag", meta.ETag)
 	w.Header().Set("Last-Modified", meta.LastModified.UTC().Format(http.TimeFormat))
+	w.Header().Set("Accept-Ranges", "bytes")
+
+	rangeHeader := r.Header.Get("Range")
+	if rangeHeader != "" {
+		ranges, invalid := parseRangeHeader(rangeHeader, meta.Size)
+		if invalid {
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", meta.Size))
+			s3error.WriteS3Err(w, s3error.ErrInvalidRange, r.URL.Path)
+			return
+		}
+		if len(ranges) == 1 {
+			br := ranges[0]
+			end := br.end
+			if end == -1 || end >= meta.Size {
+				end = meta.Size - 1
+			}
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", end-br.start+1))
+			w.Header().Set("Content-Range", contentRangeValue(br.start, end, meta.Size))
+			w.WriteHeader(http.StatusPartialContent)
+			return
+		}
+		// 多 range → 回退到 200
+	}
+
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", meta.Size))
 	w.WriteHeader(http.StatusOK)
 }
 
