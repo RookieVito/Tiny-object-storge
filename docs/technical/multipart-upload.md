@@ -173,3 +173,14 @@ CompleteMultipartUpload 时执行以下验证：
 | maxBodySize | 10 MB | 单个 part 的最大大小（复用现有配置） |
 | partNumber 范围 | 1-10000 | S3 标准限制 |
 | 最小 part 大小 | 5 MB | 非 final part 的最小大小（Complete 时验证） |
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/storage/backend.go` | `MultipartStorage` 接口定义、`PartInfo`、`UploadInfo` |
+| `src/storage/multipart.go` | LocalBackend 的 MultipartStorage 实现 |
+| `src/handler/multipart.go` | MultipartManager HTTP handler（6 个端点） |
+
+**关键类型：** `MultipartStorage`、`PartInfo`、`UploadInfo`、`MultipartManager`
+**关键函数：** `InitiateUpload()`、`UploadPart()`、`CompleteUpload()`、`AbortUpload()`、`ListParts()`、`ListUploads()`

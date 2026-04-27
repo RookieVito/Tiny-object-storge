@@ -149,3 +149,17 @@ func (gm *GossipMembership) Leader() NodeID {
 | **Riak** | Gossip | 用于集群成员管理和 Hinted Handoff |
 
 Gossip 协议是分布式系统中去中心化成员管理的主流方案，特别适合节点规模在数十到数千的场景。
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/cluster/member.go` | GossipMembership 核心实现（状态机、Ping/Pong、Incarnation） |
+| `src/cluster/protocol.go` | 协议消息类型（PingRequest、PingAck、JoinRequest 等） |
+| `src/cluster/transport.go` | HTTP RPC 传输层 |
+| `src/cluster/node.go` | 节点管理工具函数 |
+| `src/cluster/elect.go` | Leader 选举（确定性，NodeID 字典序最小者） |
+| `src/cluster/member_test.go` | 单元测试 |
+
+**关键类型：** `GossipMembership`、`NodeInfo`、`NodeID`、`NodeChangeHandler`
+**关键函数：** `NewGossipMembership()`、`Start()`、`Stop()`、`Join()`、`Leave()`、`AliveNodes()`、`Leader()`

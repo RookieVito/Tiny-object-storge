@@ -186,3 +186,15 @@ EC 元数据独立存储在一个可靠的磁盘上，记录原始大小、分�
 | **klauspost/reedsolomon** | Go 生态最流行的纠删码库，本项目独立实现 |
 
 纠删码是现代存储系统的核心技术之一，尤其在冷存储和大规模对象存储场景中不可或缺。
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/ec/galois.go` | GF(2^8) 有限域算术（exp/log 查找表） |
+| `src/ec/reedsolomon.go` | Cauchy Reed-Solomon 编解码器 |
+| `src/storage/ec.go` | ECBackend 存储后端（分片读写、降级读） |
+| `src/ec/reedsolomon_test.go` | 单元测试 |
+
+**关键类型：** `GF256`、`ReedSolomon`、`ECBackend`、`ECObjectMeta`
+**关键函数：** `NewReedSolomon()`、`Encode()`、`Decode()`、`NewECBackend()`

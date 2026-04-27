@@ -92,3 +92,12 @@ om := NewObjectManager(backend, locks, cfg.MaxBodySize)
 这确保：
 - `PutObject("my-bucket", "key")` 和 `DeleteBucket("my-bucket")` 被同一把锁序列化
 - `CreateBucket("a")` 和 `PutObject("b", "key")` 可并行执行（不同 bucket）
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/locks/locks.go` | BucketLocks per-bucket 互斥锁 |
+
+**关键类型：** `BucketLocks`
+**关键函数：** `NewBucketLocks()`、`Lock()`、`Unlock()`

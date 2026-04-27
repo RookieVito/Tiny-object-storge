@@ -156,3 +156,11 @@ defer os.Remove(tmpName)  // ← 失败时清理临时文件
 - 同一目录下不会冲突（内核保证唯一性）
 - `.tmp-` 前缀便于人工识别和批量清理
 - 后缀（如 `.meta`）便于区分数据临时文件和元数据临时文件
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/service/metadata.go` | 原子写入核心实现 |
+
+**关键函数：** `WriteFile()`、`WriteMeta()`、`ReadMeta()`、`EnsureDir()`、`DirEmpty()`

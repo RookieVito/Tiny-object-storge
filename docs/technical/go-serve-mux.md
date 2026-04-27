@@ -151,3 +151,14 @@ mux.HandleFunc("GET /{$}", bm.ListBuckets)  // 无 authWrap 包装
 `GET /` 不经过认证中间件，因为 `r.PathValue("bucket")` 对根路径不可用。
 这是开发阶段的便利性设计——ListBuckets 无需签名即可调用。
 生产环境应在 authWrap 中添加特殊处理。
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/handler/router.go` | 路由注册、中间件链、ServeMux 模式 |
+| `src/handler/bucket.go` | Bucket 操作 handler |
+| `src/handler/object.go` | Object 操作 handler |
+| `src/handler/multipart.go` | Multipart 操作 handler |
+
+**关键函数：** `NewRouter()`、`authWrap()`、`s3Middleware()`、`logMiddleware()`

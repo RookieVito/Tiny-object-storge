@@ -181,3 +181,12 @@ filtered = filtered[idx:]
   - 内存缓存元数据索引
   - 将元数据合并存储（单个 bucket 索引文件）
   - 支持 OS 级 `getdents` 批量读取目录项
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/handler/bucket.go` | ListObjectsV2 handler + XML 序列化 |
+
+**关键类型：** `listBucketResult`、`s3Object`、`s3CommonPrefix`
+**关键函数：** `BucketManager.ListObjects()`、`BucketManager.ListBuckets()`

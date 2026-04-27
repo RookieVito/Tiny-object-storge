@@ -166,3 +166,12 @@ func readMeta(metaPath string) (*ObjectMeta, error) {
 - 文件不存在 → 返回 NoSuchKey（对象不存在）
 - JSON 解析失败 → 返回内部错误
 - ListObjectsV2 遍历时跳过无法解析的元数据条目，不中断列举
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/service/metadata.go` | ObjectMeta 结构、JSON 侧边文件读写 |
+
+**关键类型：** `ObjectMeta`
+**关键函数：** `WriteMeta()`、`ReadMeta()`、`BuildMetaFromRequest()`

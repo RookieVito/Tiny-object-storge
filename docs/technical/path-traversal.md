@@ -119,3 +119,12 @@ var bucketNameRe = regexp.MustCompile(
 - 三层同时失效 → 理论上不可能（Go 框架 + 显式检查 + 数学验证）
 
 这种设计 philosophy 是安全系统的基本原则：**永远不要假设单一防线足够**。
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/pathmapper/pathmapper.go` | PathMapper 路径映射与安全校验 |
+
+**关键类型：** `PathMapper`
+**关键函数：** `NewPathMapper()`、`BucketPath()`、`ObjectPath()`、`MetaPath()`

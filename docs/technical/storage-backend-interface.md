@@ -145,3 +145,15 @@ type DistributedBackend struct {
 | **etcd** | `Storage` | 抽象 BoltDB、内存存储等后端 |
 
 策略模式的核心思想是：**面向接口编程，而非面向实现编程**。当你看到代码中只依赖接口而不依赖具体类型时，大概率就是策略模式。
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/storage/backend.go` | `StorageBackend` + `MultipartStorage` 接口定义 |
+| `src/storage/local.go` | LocalBackend（本地文件系统） |
+| `src/storage/ec.go` | ECBackend（纠删码） |
+| `src/storage/distributed.go` | DistributedBackend（分布式 Quorum） |
+| `src/storage/multipart.go` | LocalBackend 的 MultipartStorage 实现 |
+
+**关键类型：** `StorageBackend`、`MultipartStorage`、`LocalBackend`、`ECBackend`、`DistributedBackend`、`BucketInfo`、`ObjectEntry`

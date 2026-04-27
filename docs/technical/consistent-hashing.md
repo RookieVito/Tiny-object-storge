@@ -180,3 +180,13 @@ membership.OnLeave(db.onNodeLeave) // 节点离开 → ring.RemoveNode()
 | **libketama** | Ketama 的 C 实现，是事实标准 |
 
 一致性哈希是分布式系统中最基础的数据分片技术，几乎所有分布式数据库和缓存系统都在使用。
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/hash/consistent.go` | Ketama 风格一致性哈希环 |
+| `src/hash/consistent_test.go` | 单元测试（FNV-1a 双哈希、虚拟节点分布） |
+
+**关键类型：** `ConsistentHash`
+**关键函数：** `NewConsistentHash()`、`AddNode()`、`RemoveNode()`、`GetNode()`、`GetNodes()`

@@ -159,3 +159,14 @@ func (db *DistributedBackend) DeleteObject(bucket, key string) error {
 | **MongoDB** | Write Concern + Read Concern | 类似 Quorum 的一致性控制 |
 
 Quorum 是分布式存储中最基本的一致性保证机制。理解了 `W + R > N` 这个不等式，就理解了大多数分布式数据库的一致性配置。
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/storage/distributed.go` | DistributedBackend Quorum R/W |
+| `src/cluster/transport.go` | 集群内 HTTP RPC 通信 |
+| `src/config/config.go` | `DistributedConfig`（N/R/W 参数） |
+
+**关键类型：** `DistributedBackend`、`DistributedConfig`
+**关键函数：** `NewDistributedBackend()`、`PutObject()`、`GetObject()`（Quorum 逻辑）

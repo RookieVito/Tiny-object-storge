@@ -1,5 +1,5 @@
-<!-- tags: authentication, sig-v2, security, hmac -->
-# AWS Signature Version 2 认证
+<!-- tags: authentication, sig-v2, sig-v4, presign, security, hmac -->
+# AWS 签名认证（Sig V2 + V4 + Presigned URL）
 
 ## 概述
 
@@ -126,9 +126,46 @@ curl -X PUT -d "hello" -H "Authorization: ..." http://server/bucket/key
 curl -X PUT -d "hello" -H "Content-Type: application/x-www-form-urlencoded" -H "Authorization: ..." http://server/bucket/key
 ```
 
-## 6. MVP 简化
+## 6. 认证体系演进
 
-- 仅支持 `Authorization` 头认证，不支持 query string 认证
+本项目已实现三层认证机制：
+
+| 认证方式 | 文件 | 说明 |
+|----------|------|------|
+| Sig V2 | `src/auth/auth.go` | `Authorization: AWS {AK}:{Sig}`，HMAC-SHA1 |
+| Sig V4 | `src/auth/v4.go` | `Authorization: AWS4-HMAC-SHA256 ...`，HMAC-SHA256 |
+| Presigned URL | `src/auth/presign.go` | `X-Amz-Algorithm=AWS4-HMAC-SHA256` query params |
+
+认证分发逻辑（`Authenticate()`）：
+- Authorization 头以 `AWS4-HMAC-SHA256` 开头 → V4 认证
+- Authorization 头以 `AWS ` 开头 → V2 认证
+- 无 Authorization 头但 query 中有 `X-Amz-Algorithm` → Presigned URL 认证
+
+### V4 签名要点（详见 `src/auth/v4.go`）
+
+- Signing Key 派生：`HMAC(HMAC(HMAC(HMAC("AWS4"+SecretKey, DateStamp), Region), "s3"), "aws4_request")`
+- String to Sign = `Algorithm + "\n" + AmzDate + "\n" + Scope + "\n" + SHA256(CanonicalRequest)`
+- 时间偏移检查：`|X-Amz-Date - server time| > 15min` → 403
+
+### Presigned URL 要点（详见 `src/auth/presign.go`）
+
+- 签名嵌入 query params：`X-Amz-Algorithm`、`X-Amz-Credential`、`X-Amz-Signature`、`X-Amz-Date`、`X-Amz-Expires`、`X-Amz-SignedHeaders`
+- 最大有效期 7 天（604800 秒）
+- 支持 GET/PUT 方法
+
+### 通用约束
+
 - Content-MD5 字段为空（客户端未发送时）
 - 单对固定凭据，从配置文件读取
 - ListBuckets (`GET /`) 不需要认证（便于开发调试）
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/auth/auth.go` | Authenticator 认证分发（V4/V2/Presign） |
+| `src/auth/v4.go` | Sig V4 HMAC-SHA256 签名计算与验证 |
+| `src/auth/presign.go` | Presigned URL 生成与验证 |
+
+**关键类型：** `Authenticator`
+**关键函数：** `NewAuthenticatorWithRegion()`、`Authenticate()`、`authenticatePresigned()`、`PresignV4()`

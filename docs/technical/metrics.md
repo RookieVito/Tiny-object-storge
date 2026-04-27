@@ -130,3 +130,13 @@ func logMiddleware(metrics *Metrics, next http.Handler) http.Handler {
 ```
 
 这确保了 **所有请求**（包括 `/_metrics` 自身）都被计数。
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/metrics/metrics.go` | Metrics 结构、`/_metrics` handler |
+| `src/handler/router.go` | `logMiddleware` 中更新计数 |
+
+**关键类型：** `Metrics`
+**关键函数：** `NewMetrics()`、`Metrics.ServeHTTP()`、`scanFilesystem()`

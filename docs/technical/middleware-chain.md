@@ -190,3 +190,15 @@ topMux.Handle("/", mux)               // fallback 到内层
 | **Kubernetes API Server** | Filter Chain | 请求经过认证、审计、限流等过滤器链 |
 
 中间件模式的核心思想：**将通用的处理逻辑从业务代码中抽离出来，以可组合的方式叠加到请求处理流程中**。
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/handler/router.go` | s3Middleware、logMiddleware、authWrap、中间件链组装 |
+| `src/cors/cors.go` | CORSMiddleware（origin 匹配、preflight OPTIONS） |
+| `src/auth/auth.go` | Authenticator 认证分发（V4/V2/Presign） |
+| `src/auth/v4.go` | Sig V4 HMAC-SHA256 签名计算与验证 |
+| `src/auth/presign.go` | Presigned URL 生成与验证 |
+
+**关键函数：** `NewRouter()`、`authWrap()`、`s3Middleware()`、`logMiddleware()`、`CORSMiddleware()`

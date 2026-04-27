@@ -106,6 +106,19 @@ S3 错误响应使用 XML 格式：
 | `InvalidKey` | 400 | Key 不合法 |
 | `AccessDenied` | 403 | 无认证信息或 AccessKey 不匹配 |
 | `SignatureDoesNotMatch` | 403 | 签名验证失败 |
+| `RequestTimeTooSkewed` | 403 | 请求时间偏移超过 15 分钟 |
+| `MissingSecurityHeader` | 400 | 缺少必需的安全头（如 X-Amz-Date） |
+| `RequestEntityTooLarge` | 413 | 请求体超过 max_body_size 限制 |
+| `InvalidRange` | 416 | Range 请求无法满足 |
+| `InvalidPart` | 400 | Multipart part 不存在或 ETag 不匹配 |
+| `EntityTooSmall` | 400 | 非 final part 小于 5 MB |
+| `InvalidPartOrder` | 400 | Part 列表未按 partNumber 升序排列 |
+| `InvalidPartNumber` | 400 | partNumber 不在 1-10000 范围内 |
+| `NoSuchUpload` | 404 | 指定的 uploadId 不存在 |
+| `NotImplemented` | 501 | 后端不支持该操作 |
+| `InsufficientStorage` | 507 | EC 降级读失败（可用磁盘 < K） |
+| `WriteQuorumFailed` | 507 | 分布式写仲裁失败 |
+| `ReadQuorumFailed` | 507 | 分布式读仲裁失败 |
 
 ### 3.2 实现方式
 
@@ -122,3 +135,12 @@ type S3APIError struct {
 - 实现 `error` 接口，可以在函数返回值中传递
 - 在 HTTP 层边界通过 `writeS3Err()` 序列化为 XML 响应
 - Handler 函数只需 `return ErrNoSuchKey`，不需要关心 XML 序列化细节
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `src/s3error/error.go` | S3APIError 类型、错误码常量、XML 序列化 |
+
+**关键类型：** `S3APIError`、`s3ErrorResponse`
+**关键函数：** `WriteS3Err()`、`WriteS3Error()`

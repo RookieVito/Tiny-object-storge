@@ -154,3 +154,11 @@ Go 1.8 引入了 `http.Server.Shutdown()`，替代了之前直接 `Close()` 的�
 | **Spring Boot** | `@PreDestroy` | Java 生态的优雅关闭注解 |
 
 优雅关闭是生产环境的必备能力。没有它，每次部署或重启都可能导致数据不一致和用户体验下降。
+
+## 对应实现
+
+| 文件 | 说明 |
+|------|------|
+| `cmd/server/main.go` | 服务器入口（SIGINT/SIGTERM 处理、shutdown with timeout） |
+
+**关键逻辑：** 信号监听 → 停止 Accept → 等待连接排空 → 分布式后端清理 → 日志输出
