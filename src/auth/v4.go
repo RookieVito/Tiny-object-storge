@@ -64,8 +64,6 @@ func buildCanonicalRequest(r *http.Request, signedHeadersList []string, payloadH
 // buildCanonicalHeaders 根据 SignedHeaders 列表构建规范头字符串。
 // 每个头格式为 "lowercase-name:value\n"，按 signedHeadersList 顺序排列。
 func buildCanonicalHeaders(r *http.Request, signedHeadersList []string) string {
-	sort.Strings(signedHeadersList)
-
 	var sb strings.Builder
 	for _, k := range signedHeadersList {
 		sb.WriteString(k)

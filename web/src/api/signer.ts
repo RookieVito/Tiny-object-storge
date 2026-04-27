@@ -107,6 +107,7 @@ export async function signV4(
   canonicalResource: string,
   secretKey: string,
   region: string = 'us-east-1',
+  accessKey: string = '',
 ): Promise<V4Result> {
   const now = new Date();
   const amzDate = now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); // YYYYMMDDTHHmmssZ
@@ -145,7 +146,7 @@ export async function signV4(
     .join('');
 
   return {
-    authorization: `${ALGORITHM} Credential=${dateStamp}/${region}/${SERVICE}/${REQUEST_TYPE}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    authorization: `${ALGORITHM} Credential=${accessKey}/${dateStamp}/${region}/${SERVICE}/${REQUEST_TYPE}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
     amzDate,
     contentSha256: payloadHash,
   };

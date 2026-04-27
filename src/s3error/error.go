@@ -45,6 +45,10 @@ var (
 	// Sig V4 认证错误。
 	ErrRequestTimeTooSkewed  = &S3APIError{"RequestTimeTooSkewed", "The difference between the request time and the server time is too large.", http.StatusForbidden}
 	ErrMissingSecurityHeader = &S3APIError{"MissingSecurityHeader", "Your request is missing a required header.", http.StatusBadRequest}
+
+	// Presigned URL 错误。
+	ErrExpiredPresign  = &S3APIError{"AccessDenied", "Request has expired.", http.StatusForbidden}
+	ErrInvalidExpires  = &S3APIError{"InvalidArgument", "X-Amz-Expires must be between 1 and 604800.", http.StatusBadRequest}
 )
 
 // s3ErrorResponse 是 S3 错误的 XML 信封。

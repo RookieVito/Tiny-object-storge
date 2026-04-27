@@ -28,12 +28,10 @@ async function buildAuthHeaders(
 ): Promise<Record<string, string>> {
   const { authorization, amzDate, contentSha256 } = await signV4(
     method, contentType, canonicalResource, config.secretKey,
+    undefined, undefined, config.accessKey,
   );
   return {
-    Authorization: authorization.replace(
-      /Credential=([^/]+)/,
-      `Credential=${config.accessKey}`,
-    ),
+    Authorization: authorization,
     'X-Amz-Date': amzDate,
     'X-Amz-Content-Sha256': contentSha256,
   };

@@ -32,6 +32,10 @@ func NewAuthenticatorWithRegion(accessKey, secretKey, region string) *Authentica
 func (a *Authenticator) Authenticate(r *http.Request, bucket, key string) *s3error.S3APIError {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
+		// Presigned URL：无 Authorization 头，通过 query params 中的签名参数认证。
+		if r.URL.Query().Get("X-Amz-Algorithm") == "AWS4-HMAC-SHA256" {
+			return a.authenticatePresigned(r, bucket, key)
+		}
 		return s3error.ErrAccessDenied
 	}
 

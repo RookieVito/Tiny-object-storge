@@ -79,6 +79,32 @@ func testPhase10() {
 	})
 	Pass("Missing X-Amz-Date → 400", s == 400)
 
+	// --- 额外 V4 测试 ---
+
+	// V4 带查询字符串签名
+	s, _, _ = DoV4("GET", "/"+bucket+"?uploads", "", "")
+	Pass("V4 GET with ?uploads query string", s == 200)
+
+	// V4 带前缀查询
+	s, _, _ = DoV4("GET", "/"+bucket+"?delimiter=/&prefix=test", "", "")
+	Pass("V4 GET with delimiter+prefix query", s == 200)
+
+	// Content-Type 篾改检测：用 text/plain 签名，但发送 application/json
+	s, _ = Do2("PUT", "/"+bucket+"/ct-tamper", "test", "text/plain")
+	Pass("V4 PutObject for content-type tamper setup", s == 200)
+	ctHeaders := SigV4("GET", "/"+bucket+"/ct-tamper", "text/plain")
+	ctHeaders["Content-Type"] = "application/json" // 篡改 content-type
+	s, _ = DoRaw("GET", "/"+bucket+"/ct-tamper", ctHeaders)
+	Pass("Content-Type tamper → 403", s == 403)
+
+	// Range + V4 组合
+	s, b, h := DoV4WithHeaders("GET", "/"+bucket+"/v2-object", "", "", map[string]string{
+		"Range": "bytes=0-4",
+	})
+	Pass("Range + V4 → 206", s == 206)
+	Pass("Range + V4 content", b == "v2 st")
+	Pass("Range + V4 Content-Range", h.Get("Content-Range") != "")
+
 	// 清理
 	Do2("DELETE", "/"+bucket+"/v2-object", "", "")
 	Do2("DELETE", "/"+bucket, "", "")

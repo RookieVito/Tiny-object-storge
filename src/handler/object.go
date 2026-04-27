@@ -81,7 +81,6 @@ func (om *ObjectManager) GetObject(w http.ResponseWriter, r *http.Request) {
 	if rangeHeader != "" {
 		ranges, invalid := parseRangeHeader(rangeHeader, int64(len(data)))
 		if invalid {
-			w.Header().Set("Content-Range", contentRangeValue(0, 0, int64(len(data))))
 			w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", int64(len(data))))
 			s3error.WriteS3Err(w, s3error.ErrInvalidRange, r.URL.Path)
 			return
