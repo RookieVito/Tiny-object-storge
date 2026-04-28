@@ -443,8 +443,7 @@ cmd/server/     ← handler, config, storage
 - [x] ETag 标准算法（单 part MD5 + 最终对象 `MD5(concat)-N`）
 - [x] 并发安全（UploadPart 无锁可并行，Complete/Abort 加 bucket 锁）
 - [x] `.uploads/` 目录隔离（ListObjects/Metrics 自动跳过）
-- [x] EC/Distributed 后端 stub（返回 ErrNotImplemented）
-- [x] 32 个集成测试
+- [x] EC/Distributed 后端 Multipart Upload（Phase 13 完整实现）
 
 ### Phase 9: Range 请求 ✅
 - [x] **parseRangeHeader**（handler/helpers.go）— 支持 `bytes=start-end`、`bytes=start-`、`bytes=-suffix`
@@ -476,9 +475,15 @@ cmd/server/     ← handler, config, storage
 - [x] 默认启用（`Enabled: true`，`AllowedOrigins: ["*"]`）
 - [x] 12 个集成测试
 
+### Phase 13: EC/Distributed Multipart Upload ✅
+- [x] **EC multipart**（src/storage/ec.go）— per-part EC 编解码、`.uploads/` 元数据管理
+- [x] **Distributed multipart**（src/storage/distributed.go）— coordinator 模式、RPC part 复制、quorum 确认
+- [x] **Cluster RPC 扩展**（src/cluster/protocol.go）— `PartInfoMsg`、`UploadId`/`PartNumber`/`Parts` 字段
+- [x] **HandleReplicate 分发** — `multipart_upload_part`/`multipart_abort`/`multipart_list_parts`/`multipart_get_info`/`multipart_read_part` 操作
+- [x] 替换 EC/Distributed 后端的 ErrNotImplemented stub
+- [x] 集成测试 `test/phase13.go`
+
 ### Future Enhancements (post-MVP)
-- EC/Distributed 后端 Multipart Upload 支持
 - Object versioning
-- Presigned URLs
 - 磁盘健康监控和自动 rebalance
 - TTL 自动清理过期 upload

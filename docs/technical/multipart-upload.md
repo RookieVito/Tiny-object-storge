@@ -174,13 +174,46 @@ CompleteMultipartUpload 时执行以下验证：
 | partNumber 范围 | 1-10000 | S3 标准限制 |
 | 最小 part 大小 | 5 MB | 非 final part 的最小大小（Complete 时验证） |
 
-## 对应实现
+## 11. EC Multipart 磁盘布局
+
+EC 后端为每个 part 单独进行 Reed-Solomon 编码，分片分布到各磁盘：
+
+```
+disk-{i}/{bucket}/.uploads/{uploadId}/
+  part-0001.bin                      ← part 的第 i 个分片
+  part-0001.bin.ec-meta              ← 不使用（EC 元数据在 metaStore）
+
+meta-root/{bucket}/
+  .upload-info-{uploadId}            ← upload 元数据（UploadInfo JSON）
+  .upload-info-{uploadId}.meta       ← 元数据的 ObjectMeta
+```
+
+**EC Multipart 流程**：
+1. `InitiateUpload` — 在 metaStore 创建 `.upload-info-{uploadId}`
+2. `UploadPart(partNumber, data)` — RS.Encode(data) → 各磁盘写入 `part-NNNN.bin` 分片
+3. `CompleteUpload(parts)` — 逐 part 从各磁盘读分片 → RS.Decode → 拼接 → PutObject EC 编码写入 → 清理临时数据
+4. `AbortUpload` — 删除各磁盘 part 分片 + metaStore upload 信息
+
+## 12. Distributed Multipart
+
+分布式后端使用 coordinator 模式（与 PutObject/GetObject 一致）：
+
+1. `InitiateUpload` — coordinator 节点在本地 LocalBackend 创建 upload 记录
+2. `UploadPart` — coordinator 通过 RPC `multipart_upload_part` 复制 part 到 W 个节点
+3. `CompleteUpload` — coordinator 从本地读取所有 part → 拼接 → PutObject（quorum 写入）→ RPC `multipart_abort` 清理副本节点
+4. `AbortUpload` — 本地清理 + RPC 通知所有副本节点
+5. `ListParts/ListUploads/GetUploadInfo` — coordinator 本地读取
+
+**RPC 操作**：`multipart_upload_part`、`multipart_abort`、`multipart_list_parts`、`multipart_get_info`、`multipart_read_part`
 
 | 文件 | 说明 |
 |------|------|
 | `src/storage/backend.go` | `MultipartStorage` 接口定义、`PartInfo`、`UploadInfo` |
 | `src/storage/multipart.go` | LocalBackend 的 MultipartStorage 实现 |
+| `src/storage/ec.go` | ECBackend 的 MultipartStorage 实现（per-part EC 编解码） |
+| `src/storage/distributed.go` | DistributedBackend 的 MultipartStorage 实现（coordinator 模式） |
+| `src/cluster/protocol.go` | `PartInfoMsg`、`StorageRequest` multipart 字段扩展 |
 | `src/handler/multipart.go` | MultipartManager HTTP handler（6 个端点） |
 
-**关键类型：** `MultipartStorage`、`PartInfo`、`UploadInfo`、`MultipartManager`
+**关键类型：** `MultipartStorage`、`PartInfo`、`UploadInfo`、`MultipartManager`、`ECPartMeta`、`PartInfoMsg`
 **关键函数：** `InitiateUpload()`、`UploadPart()`、`CompleteUpload()`、`AbortUpload()`、`ListParts()`、`ListUploads()`

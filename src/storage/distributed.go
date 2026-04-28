@@ -1,11 +1,14 @@
 package storage
 
 import (
+	"crypto/md5"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -123,6 +126,7 @@ func (db *DistributedBackend) MembershipHandler() http.Handler {
 			db.membership.HandleMembers(w, r)
 		case "/replicate":
 			db.HandleReplicate(w, r)
+
 		default:
 			http.NotFound(w, r)
 		}
@@ -946,6 +950,62 @@ func (db *DistributedBackend) HandleReplicate(w http.ResponseWriter, r *http.Req
 		resp.Status = 200
 		resp.Data = string(data)
 
+	case "multipart_upload_part":
+		data, err := base64.StdEncoding.DecodeString(req.Data)
+		if err != nil {
+			writeReplicateError(w, http.StatusBadRequest, "invalid base64 data: %v", err)
+			return
+		}
+		pi, err := db.local.UploadPart(req.Bucket, req.Key, req.UploadId, req.PartNumber, data)
+		if err != nil {
+			writeReplicateS3Err(w, resp, err)
+			return
+		}
+		resp.Status = 200
+		resp.Meta = &cluster.ObjectMetaMsg{ETag: pi.ETag}
+
+	case "multipart_abort":
+		db.local.AbortUpload(req.Bucket, "", req.UploadId)
+		resp.Status = 200
+
+	case "multipart_list_parts":
+		parts, err := db.local.ListParts(req.Bucket, req.Key, req.UploadId)
+		if err != nil {
+			writeReplicateS3Err(w, resp, err)
+			return
+		}
+		partMsgs := make([]cluster.PartInfoMsg, len(parts))
+		for i, p := range parts {
+			partMsgs[i] = cluster.PartInfoMsg{
+				PartNumber:   p.PartNumber,
+				Size:         p.Size,
+				ETag:         p.ETag,
+				LastModified: p.LastModified.Format(time.RFC3339),
+			}
+		}
+		partsData, _ := json.Marshal(partMsgs)
+		resp.Status = 200
+		resp.Data = string(partsData)
+
+	case "multipart_get_info":
+		info, err := db.local.GetUploadInfo(req.Bucket, req.Key, req.UploadId)
+		if err != nil {
+			writeReplicateS3Err(w, resp, err)
+			return
+		}
+		infoData, _ := json.Marshal(info)
+		resp.Status = 200
+		resp.Data = string(infoData)
+
+	case "multipart_read_part":
+		data, err := db.readPartData(req.Bucket, req.UploadId, req.PartNumber)
+		if err != nil {
+			writeReplicateS3Err(w, resp, err)
+			return
+		}
+		resp.Status = 200
+		resp.Data = base64.StdEncoding.EncodeToString(data)
+
 	default:
 		writeReplicateError(w, http.StatusBadRequest, "unknown operation: %s", req.Operation)
 		return
@@ -1013,31 +1073,153 @@ func sortEntries(entries []ObjectEntry) {
 	}
 }
 
-// MultipartStorage 接口 stub — Distributed 后端暂不支持 multipart upload。
+// --- MultipartStorage 接口（Distributed 后端，coordinator 模式）---
+
 func (db *DistributedBackend) InitiateUpload(bucket, key string, contentType string, userMeta map[string]string) (*UploadInfo, error) {
-	return nil, s3error.ErrNotImplemented
+	return db.local.InitiateUpload(bucket, key, contentType, userMeta)
 }
 
 func (db *DistributedBackend) UploadPart(bucket, key, uploadId string, partNumber int, data []byte) (*PartInfo, error) {
-	return nil, s3error.ErrNotImplemented
+	reps := db.replicas(bucket + "/" + key + "/multipart/" + uploadId)
+	if len(reps) == 0 {
+		return nil, s3error.ErrWriteQuorumFailed
+	}
+
+	b64Data := base64.StdEncoding.EncodeToString(data)
+	var wg sync.WaitGroup
+	successes := int32(0)
+	var storedPart *PartInfo
+
+	for _, nodeID := range reps {
+		wg.Add(1)
+		go func(node string) {
+			defer wg.Done()
+			var pi *PartInfo
+			if db.isSelf(node) {
+				var err error
+				pi, err = db.local.UploadPart(bucket, key, uploadId, partNumber, data)
+				if err != nil {
+					return
+				}
+			} else {
+				req := &cluster.StorageRequest{
+					RequestID:  db.nextRequestID(),
+					Operation:  "multipart_upload_part",
+					Bucket:     bucket,
+					Key:        key,
+					UploadId:   uploadId,
+					PartNumber: partNumber,
+					Data:       b64Data,
+				}
+				resp, err := db.transport.Replicate(cluster.NodeID(node), req)
+				if err != nil || resp.Status >= 400 {
+					return
+				}
+				pi = &PartInfo{
+					PartNumber:   partNumber,
+					Size:         int64(len(data)),
+					ETag:         resp.Meta.ETag,
+					LastModified: time.Now().UTC(),
+				}
+			}
+			atomic.AddInt32(&successes, 1)
+			storedPart = pi
+		}(nodeID)
+	}
+	wg.Wait()
+
+	if int(successes) < db.config.WriteQuorum {
+		return nil, s3error.ErrWriteQuorumFailed
+	}
+	return storedPart, nil
 }
 
 func (db *DistributedBackend) CompleteUpload(bucket, key, uploadId string, parts []PartInfo) (string, error) {
-	return "", s3error.ErrNotImplemented
+	// 从本地 assemble（coordinator 持有所有 part 数据的副本）。
+	partsCopy := make([]PartInfo, len(parts))
+	copy(partsCopy, parts)
+	sort.Slice(partsCopy, func(i, j int) bool { return partsCopy[i].PartNumber < partsCopy[j].PartNumber })
+
+	var assembled []byte
+	for _, part := range partsCopy {
+		data, err := db.readPartData(bucket, uploadId, part.PartNumber)
+		if err != nil {
+			return "", err
+		}
+		assembled = append(assembled, data...)
+	}
+
+	// 计算复合 ETag。
+	hash := md5.Sum(assembled)
+	etag := fmt.Sprintf("\"%x-%d\"", hash, len(partsCopy))
+
+	// 写入最终对象。
+	meta := &service.ObjectMeta{
+		Key:          key,
+		Size:         int64(len(assembled)),
+		ETag:         etag,
+		LastModified: time.Now().UTC(),
+	}
+	if err := db.PutObject(bucket, key, assembled, meta); err != nil {
+		return "", err
+	}
+
+	// 清理本地和远程节点的临时数据。
+	db.cleanupDistributedUpload(bucket, uploadId, partsCopy)
+	return etag, nil
 }
 
 func (db *DistributedBackend) AbortUpload(bucket, key, uploadId string) error {
-	return s3error.ErrNotImplemented
+	parts, _ := db.local.ListParts(bucket, key, uploadId)
+	db.cleanupDistributedUpload(bucket, uploadId, parts)
+	return nil
 }
 
 func (db *DistributedBackend) ListParts(bucket, key, uploadId string) ([]PartInfo, error) {
-	return nil, s3error.ErrNotImplemented
+	return db.local.ListParts(bucket, key, uploadId)
 }
 
 func (db *DistributedBackend) ListUploads(bucket, prefix, keyMarker string, maxUploads int) ([]UploadInfo, string, bool, error) {
-	return nil, "", false, s3error.ErrNotImplemented
+	return db.local.ListUploads(bucket, prefix, keyMarker, maxUploads)
 }
 
 func (db *DistributedBackend) GetUploadInfo(bucket, key, uploadId string) (*UploadInfo, error) {
-	return nil, s3error.ErrNotImplemented
+	return db.local.GetUploadInfo(bucket, key, uploadId)
+}
+
+// readPartData 从本地后端读取 part 原始数据。
+func (db *DistributedBackend) readPartData(bucket, uploadId string, partNumber int) ([]byte, error) {
+	bucketPath, err := db.local.pm.BucketPath(bucket)
+	if err != nil {
+		return nil, err
+	}
+	partPath := bucketPath + "/.uploads/" + uploadId + "/part-" + fmt.Sprintf("%04d", partNumber) + ".bin"
+	data, err := os.ReadFile(partPath)
+	if err != nil {
+		return nil, s3error.ErrNoSuchUpload
+	}
+	return data, nil
+}
+
+// cleanupDistributedUpload 清理本地和副本节点的上传临时数据。
+func (db *DistributedBackend) cleanupDistributedUpload(bucket, uploadId string, parts []PartInfo) {
+	// 本地清理。
+	db.local.AbortUpload(bucket, "", uploadId)
+
+	// RPC 清理副本节点。
+	reps := db.replicas(bucket + "/multipart/" + uploadId)
+	for _, nodeID := range reps {
+		if db.isSelf(nodeID) {
+			continue
+		}
+		go func(node string) {
+			req := &cluster.StorageRequest{
+				RequestID: db.nextRequestID(),
+				Operation: "multipart_abort",
+				Bucket:    bucket,
+				UploadId:  uploadId,
+			}
+			db.transport.Replicate(cluster.NodeID(node), req)
+		}(nodeID)
+	}
 }

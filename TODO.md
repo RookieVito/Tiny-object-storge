@@ -93,13 +93,14 @@
 - [x] 默认启用（`Enabled: true`，`AllowedOrigins: ["*"]`）
 - [x] 12 个集成测试 `test/phase12.go`
 
-## Phase 13: EC/Distributed Multipart Upload 🔜
+## Phase 13: EC/Distributed Multipart Upload ✅
 
-- [ ] **EC multipart**（src/storage/ec_multipart.go）— per-part EC 编解码、元数据管理
-- [ ] **Distributed multipart**（src/storage/distributed_multipart.go）— RPC 协调、quorum 确认
-- [ ] **Cluster RPC 扩展** — protocol.go + transport.go 新增 multipart 消息类型
-- [ ] 替换 EC/Distributed 后端的 ErrNotImplemented stub
-- [ ] 集成测试 `test/phase13.go`
+- [x] **EC multipart**（src/storage/ec.go）— per-part EC 编解码、元数据管理
+- [x] **Distributed multipart**（src/storage/distributed.go）— coordinator 模式、RPC 协调、quorum 确认
+- [x] **Cluster RPC 扩展**（src/cluster/protocol.go）— `PartInfoMsg`、`UploadId`/`PartNumber`/`Parts` 字段
+- [x] **HandleReplicate 分发** — 5 个 multipart RPC 操作（upload_part/abort/list_parts/get_info/read_part）
+- [x] 替换 EC/Distributed 后端的 ErrNotImplemented stub
+- [x] 集成测试 `test/phase13.go`（EC + 分布式全流程）
 
 ## Phase 14: TTL 自动清理 🔜
 

@@ -47,6 +47,17 @@ type StorageRequest struct {
 	Key       string            `json:"key,omitempty"`
 	Data      string            `json:"data,omitempty"` // base64 编码
 	Meta      *ObjectMetaMsg    `json:"meta,omitempty"`
+	UploadId  string            `json:"upload_id,omitempty"`
+	PartNumber int              `json:"part_number,omitempty"`
+	Parts      []PartInfoMsg     `json:"parts,omitempty"`
+}
+
+// PartInfoMsg 节点间传输的 part 元数据。
+type PartInfoMsg struct {
+	PartNumber   int    `json:"part_number"`
+	Size         int64  `json:"size"`
+	ETag         string `json:"etag"`
+	LastModified string `json:"last_modified"`
 }
 
 // ObjectMetaMsg 节点间传输的对象元数据。

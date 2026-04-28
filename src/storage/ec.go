@@ -1,8 +1,10 @@
 package storage
 
 import (
+	"crypto/md5"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -445,31 +447,261 @@ func base64Encode(s string) string {
 	return base64.StdEncoding.EncodeToString([]byte(s))
 }
 
-// MultipartStorage 接口 stub — EC 后端暂不支持 multipart upload。
+// ECPartMeta 每个 part 在磁盘上的 EC 元数据。
+type ECPartMeta struct {
+	PartNumber   int       `json:"part_number"`
+	ShardSize    int       `json:"shard_size"`
+	OriginalSize int64     `json:"original_size"`
+	ETag         string    `json:"etag"`
+	LastModified time.Time `json:"last_modified"`
+}
+
+// --- MultipartStorage 接口（EC 后端）---
+
 func (eb *ECBackend) InitiateUpload(bucket, key string, contentType string, userMeta map[string]string) (*UploadInfo, error) {
-	return nil, s3error.ErrNotImplemented
+	uploadId := GenerateUploadId()
+	info := &UploadInfo{
+		UploadId:     uploadId,
+		Bucket:       bucket,
+		Key:          key,
+		ContentType:  contentType,
+		UserMetadata: userMeta,
+		Initiated:    time.Now().UTC(),
+	}
+	infoData, _ := json.Marshal(info)
+	meta := &service.ObjectMeta{
+		Key:          ecUploadInfoKey(uploadId),
+		Size:         int64(len(infoData)),
+		ContentType:  "application/json",
+		LastModified: info.Initiated,
+	}
+	if err := eb.metaStore.PutObject(bucket, ecUploadInfoKey(uploadId), infoData, meta); err != nil {
+		return nil, err
+	}
+	return info, nil
 }
 
 func (eb *ECBackend) UploadPart(bucket, key, uploadId string, partNumber int, data []byte) (*PartInfo, error) {
-	return nil, s3error.ErrNotImplemented
+	if eb.AliveCount() < eb.dataShards {
+		return nil, s3error.ErrInsufficientStorage
+	}
+
+	shards, shardSize := eb.rs.Encode(data)
+
+	etag := fmt.Sprintf("\"%x\"", md5.Sum(data))
+	partMeta := &ECPartMeta{
+		PartNumber:   partNumber,
+		ShardSize:    shardSize,
+		OriginalSize: int64(len(data)),
+		ETag:         etag,
+		LastModified: time.Now().UTC(),
+	}
+	metaData, _ := json.Marshal(partMeta)
+	shardMeta := &service.ObjectMeta{
+		Key:          ecUploadInfoKey(uploadId),
+		Size:         int64(len(metaData)),
+		ContentType:  "application/json",
+		LastModified: partMeta.LastModified,
+	}
+
+	for i := 0; i < eb.totalShards && i < len(eb.disks); i++ {
+		if !eb.diskStates[i].Alive {
+			continue
+		}
+		partKey := ecPartKey(uploadId, partNumber)
+		if err := eb.disks[i].PutObject(bucket, partKey, shards[i], shardMeta); err != nil {
+			return nil, err
+		}
+	}
+
+	return &PartInfo{
+		PartNumber:   partNumber,
+		Size:         int64(len(data)),
+		ETag:         etag,
+		LastModified: partMeta.LastModified,
+	}, nil
 }
 
 func (eb *ECBackend) CompleteUpload(bucket, key, uploadId string, parts []PartInfo) (string, error) {
-	return "", s3error.ErrNotImplemented
+	// 按 PartNumber 排序。
+	sort.Slice(parts, func(i, j int) bool { return parts[i].PartNumber < parts[j].PartNumber })
+
+	// 逐 part 从各磁盘读取分片 → 解码 → 拼接完整数据。
+	var assembled []byte
+	for _, part := range parts {
+		partKey := ecPartKey(uploadId, part.PartNumber)
+		shards := make([][]byte, eb.totalShards)
+		missing := 0
+		for i := 0; i < eb.totalShards && i < len(eb.disks); i++ {
+			if !eb.diskStates[i].Alive {
+				missing++
+				continue
+			}
+			data, _, err := eb.disks[i].GetObject(bucket, partKey)
+			if err != nil {
+				missing++
+				continue
+			}
+			shards[i] = data
+		}
+		if missing > eb.rs.ParityShards() {
+			return "", s3error.ErrInsufficientStorage
+		}
+		if err := eb.rs.Decode(shards, len(shards[0])); err != nil {
+			return "", err
+		}
+		recovered := make([]byte, 0, part.Size)
+		for i := 0; i < eb.dataShards; i++ {
+			recovered = append(recovered, shards[i]...)
+		}
+		assembled = append(assembled, recovered[:part.Size]...)
+	}
+
+	// 计算 MD5。
+	md5Hash := md5.Sum(assembled)
+	etag := fmt.Sprintf("\"%x-%d\"", md5Hash, len(parts))
+
+	// 作为普通对象 EC Encode 写入。
+	objMeta := &service.ObjectMeta{
+		Key:          key,
+		Size:         int64(len(assembled)),
+		ETag:         etag,
+		ContentType:  "", // 由 Complete 时设置
+		LastModified: time.Now().UTC(),
+	}
+	if err := eb.PutObject(bucket, key, assembled, objMeta); err != nil {
+		return "", err
+	}
+
+	// 清理临时数据。
+	eb.cleanupECUpload(bucket, uploadId, parts)
+	return etag, nil
 }
 
 func (eb *ECBackend) AbortUpload(bucket, key, uploadId string) error {
-	return s3error.ErrNotImplemented
+	// 获取已有的 parts（尽力清理）。
+	parts, _ := eb.ListParts(bucket, key, uploadId)
+	for _, part := range parts {
+		partKey := ecPartKey(uploadId, part.PartNumber)
+		for _, disk := range eb.disks {
+			disk.DeleteObject(bucket, partKey) // 忽略错误
+		}
+	}
+	eb.metaStore.DeleteObject(bucket, ecUploadInfoKey(uploadId))
+	return nil
 }
 
 func (eb *ECBackend) ListParts(bucket, key, uploadId string) ([]PartInfo, error) {
-	return nil, s3error.ErrNotImplemented
+	// 从磁盘 0 读取 info.json 中存储的 parts。
+	// 由于 EC multipart 的 part meta 存在各磁盘上，我们通过遍历磁盘 0 的
+	// upload 目录来发现 parts。
+	if ok, err := eb.metaStore.BucketExists(bucket); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, s3error.ErrNoSuchBucket
+	}
+
+	// 通过 info.json 无法知道哪些 parts 存在，所以遍历磁盘 0 的 .uploads 目录。
+	entries, _, _, _, err := eb.disks[0].ListObjects(bucket, ".uploads/"+uploadId+"/", "", "", 10000)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []PartInfo
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Key, ".uploads/"+uploadId+"/part-") || !strings.HasSuffix(e.Key, ".bin.ec-meta") {
+			continue
+		}
+		data, _, err := eb.disks[0].GetObject(bucket, e.Key)
+		if err != nil {
+			continue
+		}
+		var pm ECPartMeta
+		if json.Unmarshal(data, &pm) != nil {
+			continue
+		}
+		result = append(result, PartInfo{
+			PartNumber:   pm.PartNumber,
+			Size:         pm.OriginalSize,
+			ETag:         pm.ETag,
+			LastModified: pm.LastModified,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].PartNumber < result[j].PartNumber })
+	return result, nil
 }
 
 func (eb *ECBackend) ListUploads(bucket, prefix, keyMarker string, maxUploads int) ([]UploadInfo, string, bool, error) {
-	return nil, "", false, s3error.ErrNotImplemented
+	// 从 metaStore 中列出所有 upload info。
+	if ok, err := eb.metaStore.BucketExists(bucket); err != nil {
+		return nil, "", false, err
+	} else if !ok {
+		return nil, "", false, s3error.ErrNoSuchBucket
+	}
+
+	entries, _, _, _, err := eb.metaStore.ListObjects(bucket, ".uploads/", "", "", 100000)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	var uploads []UploadInfo
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Key, ".upload-info") {
+			continue
+		}
+		data, _, err := eb.metaStore.GetObject(bucket, e.Key)
+		if err != nil {
+			continue
+		}
+		var info UploadInfo
+		if json.Unmarshal(data, &info) != nil {
+			continue
+		}
+		if prefix != "" && !strings.HasPrefix(info.Key, prefix) {
+			continue
+		}
+		if keyMarker != "" && info.Key <= keyMarker {
+			continue
+		}
+		uploads = append(uploads, info)
+	}
+
+	sort.Slice(uploads, func(i, j int) bool { return uploads[i].Key < uploads[j].Key })
+
+	if maxUploads > 0 && len(uploads) > maxUploads {
+		return uploads[:maxUploads], uploads[maxUploads].Key, true, nil
+	}
+	return uploads, "", false, nil
 }
 
 func (eb *ECBackend) GetUploadInfo(bucket, key, uploadId string) (*UploadInfo, error) {
-	return nil, s3error.ErrNotImplemented
+	data, _, err := eb.metaStore.GetObject(bucket, ecUploadInfoKey(uploadId))
+	if err != nil {
+		return nil, err
+	}
+	var info UploadInfo
+	if err := json.Unmarshal(data, &info); err != nil {
+		return nil, err
+	}
+	return &info, nil
+}
+
+// --- EC Multipart 内部辅助 ---
+
+func ecUploadInfoKey(uploadId string) string {
+	return ".uploads/" + uploadId + ".upload-info"
+}
+
+func ecPartKey(uploadId string, partNumber int) string {
+	return fmt.Sprintf(".uploads/%s/part-%04d.bin", uploadId, partNumber)
+}
+
+func (eb *ECBackend) cleanupECUpload(bucket, uploadId string, parts []PartInfo) {
+	for _, part := range parts {
+		partKey := ecPartKey(uploadId, part.PartNumber)
+		for _, disk := range eb.disks {
+			disk.DeleteObject(bucket, partKey)
+		}
+	}
+	eb.metaStore.DeleteObject(bucket, ecUploadInfoKey(uploadId))
 }
