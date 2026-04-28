@@ -179,13 +179,13 @@ CompleteMultipartUpload 时执行以下验证：
 EC 后端为每个 part 单独进行 Reed-Solomon 编码，分片分布到各磁盘：
 
 ```
-disk-{i}/{bucket}/.uploads/{uploadId}/
-  part-0001.bin                      ← part 的第 i 个分片
-  part-0001.bin.ec-meta              ← 不使用（EC 元数据在 metaStore）
+disk-{i}/{bucket}/
+  .uploads/{uploadId}/part-0001.bin  ← part 的第 i 个分片
 
 meta-root/{bucket}/
-  .upload-info-{uploadId}            ← upload 元数据（UploadInfo JSON）
-  .upload-info-{uploadId}.meta       ← 元数据的 ObjectMeta
+  .uploads/{uploadId}.upload-info         ← upload 元数据（UploadInfo JSON）
+  .uploads/{uploadId}.upload-info.meta    ← 元数据的 ObjectMeta
+  .uploads/{uploadId}/part-0001.ec-meta   ← part 的 EC 分片元数据（ECPartMeta JSON）
 ```
 
 **EC Multipart 流程**：
@@ -196,15 +196,15 @@ meta-root/{bucket}/
 
 ## 12. Distributed Multipart
 
-分布式后端使用 coordinator 模式（与 PutObject/GetObject 一致）：
+分布式后端使用 coordinator 模式（simplified local-first 策略）：
 
 1. `InitiateUpload` — coordinator 节点在本地 LocalBackend 创建 upload 记录
-2. `UploadPart` — coordinator 通过 RPC `multipart_upload_part` 复制 part 到 W 个节点
-3. `CompleteUpload` — coordinator 从本地读取所有 part → 拼接 → PutObject（quorum 写入）→ RPC `multipart_abort` 清理副本节点
-4. `AbortUpload` — 本地清理 + RPC 通知所有副本节点
+2. `UploadPart` — coordinator 本地存储（不进行 RPC 复制，简化实现避免 quorum 开销）
+3. `CompleteUpload` — coordinator 从本地读取所有 part → 拼接 → PutObject（quorum 写入最终对象）→ 本地清理 .uploads 目录
+4. `AbortUpload` — 本地清理 .uploads 目录
 5. `ListParts/ListUploads/GetUploadInfo` — coordinator 本地读取
 
-**RPC 操作**：`multipart_upload_part`、`multipart_abort`、`multipart_list_parts`、`multipart_get_info`、`multipart_read_part`
+**设计选择**：UploadPart 仅本地存储（coordinator 模式），最终对象的持久化和复制由 CompleteUpload 调用 PutObject 保证 quorum 写入。
 
 | 文件 | 说明 |
 |------|------|

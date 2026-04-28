@@ -477,9 +477,8 @@ cmd/server/     ← handler, config, storage
 
 ### Phase 13: EC/Distributed Multipart Upload ✅
 - [x] **EC multipart**（src/storage/ec.go）— per-part EC 编解码、`.uploads/` 元数据管理
-- [x] **Distributed multipart**（src/storage/distributed.go）— coordinator 模式、RPC part 复制、quorum 确认
+- [x] **Distributed multipart**（src/storage/distributed.go）— coordinator 模式、UploadPart 本地存储、CompleteUpload quorum 写入最终对象
 - [x] **Cluster RPC 扩展**（src/cluster/protocol.go）— `PartInfoMsg`、`UploadId`/`PartNumber`/`Parts` 字段
-- [x] **HandleReplicate 分发** — `multipart_upload_part`/`multipart_abort`/`multipart_list_parts`/`multipart_get_info`/`multipart_read_part` 操作
 - [x] 替换 EC/Distributed 后端的 ErrNotImplemented stub
 - [x] 集成测试 `test/phase13.go`
 

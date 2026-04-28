@@ -87,8 +87,13 @@ func distDo(method, fullURL, data, contentType string) (int, string, http.Header
 	if idx := strings.Index(path, "/"); idx >= 0 {
 		path = path[idx:]
 	}
+	// Sig V2 resource 不包含 query string。
+	resource := path
+	if idx := strings.Index(resource, "?"); idx >= 0 {
+		resource = resource[:idx]
+	}
 
-	sts := method + "\n" + "" + "\n" + contentType + "\n" + date + "\n" + path
+	sts := method + "\n" + "" + "\n" + contentType + "\n" + date + "\n" + resource
 	mac := hmac.New(sha1.New, []byte(SecretKey))
 	mac.Write([]byte(sts))
 	sig := base64.StdEncoding.EncodeToString(mac.Sum(nil))

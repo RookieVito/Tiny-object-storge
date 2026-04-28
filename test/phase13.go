@@ -12,7 +12,8 @@ import (
 )
 
 func init() {
-	registerTest("Phase 13", testPhase13)
+	registerTest("Phase 13 EC", testPhase13EC)
+	registerTest("Phase 13 Distributed", testPhase13Distributed)
 }
 
 func testPhase13() {
@@ -59,9 +60,9 @@ func testPhase13EC() {
 	uploadId := initRes.UploadId
 	Pass("EC Multipart: UploadId returned", uploadId != "")
 
-	// 2. UploadPart — 2 个 part（EC 模式使用 LocalBackend 的 multipart 逻辑，不需要 5MB 限制）
-	part1Data := strings.Repeat("A", 1024) // 1 KB
-	part2Data := strings.Repeat("B", 2048) // 2 KB
+	// 2. UploadPart — 2 个 part
+	part1Data := strings.Repeat("A", 5<<20) // 5 MB
+	part2Data := strings.Repeat("B", 5<<20) // 5 MB（最后一个 part 可以 < 5MB）
 
 	status1, _, h1 := Do("PUT", fmt.Sprintf("/%s/%s?partNumber=1&uploadId=%s", bucket, key, uploadId), part1Data, ct)
 	status2, _, h2 := Do("PUT", fmt.Sprintf("/%s/%s?partNumber=2&uploadId=%s", bucket, key, uploadId), part2Data, ct)
@@ -86,7 +87,7 @@ func testPhase13EC() {
 	xml.Unmarshal([]byte(body), &listRes)
 	Pass("EC Multipart: ListParts returns 2 parts", len(listRes.Parts) == 2)
 	if len(listRes.Parts) >= 2 {
-		Pass("EC Multipart: ListParts sizes correct", listRes.Parts[0].Size == 1024 && listRes.Parts[1].Size == 2048)
+		Pass("EC Multipart: ListParts sizes correct", listRes.Parts[0].Size == 5<<20 && listRes.Parts[1].Size == 5<<20)
 	}
 
 	// 4. ListMultipartUploads

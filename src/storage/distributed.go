@@ -1082,58 +1082,8 @@ func (db *DistributedBackend) InitiateUpload(bucket, key string, contentType str
 }
 
 func (db *DistributedBackend) UploadPart(bucket, key, uploadId string, partNumber int, data []byte) (*PartInfo, error) {
-	reps := db.replicas(bucket + "/" + key + "/multipart/" + uploadId)
-	if len(reps) == 0 {
-		return nil, s3error.ErrWriteQuorumFailed
-	}
-
-	b64Data := base64.StdEncoding.EncodeToString(data)
-	var wg sync.WaitGroup
-	successes := int32(0)
-	var firstPart atomic.Pointer[PartInfo]
-
-	for _, nodeID := range reps {
-		wg.Add(1)
-		go func(node string) {
-			defer wg.Done()
-			var pi *PartInfo
-			if db.isSelf(node) {
-				var err error
-				pi, err = db.local.UploadPart(bucket, key, uploadId, partNumber, data)
-				if err != nil {
-					return
-				}
-			} else {
-				req := &cluster.StorageRequest{
-					RequestID:  db.nextRequestID(),
-					Operation:  "multipart_upload_part",
-					Bucket:     bucket,
-					Key:        key,
-					UploadId:   uploadId,
-					PartNumber: partNumber,
-					Data:       b64Data,
-				}
-				resp, err := db.transport.Replicate(cluster.NodeID(node), req)
-				if err != nil || resp.Status >= 400 {
-					return
-				}
-				pi = &PartInfo{
-					PartNumber:   partNumber,
-					Size:         int64(len(data)),
-					ETag:         resp.Meta.ETag,
-					LastModified: time.Now().UTC(),
-				}
-			}
-			atomic.AddInt32(&successes, 1)
-			firstPart.CompareAndSwap(nil, pi)
-		}(nodeID)
-	}
-	wg.Wait()
-
-	if int(successes) < db.config.WriteQuorum {
-		return nil, s3error.ErrWriteQuorumFailed
-	}
-	return firstPart.Load(), nil
+	// Coordinator 模式：仅存储到本地，CompleteUpload 时通过 PutObject quorum 写入最终对象。
+	return db.local.UploadPart(bucket, key, uploadId, partNumber, data)
 }
 
 func (db *DistributedBackend) CompleteUpload(bucket, key, uploadId string, parts []PartInfo) (string, error) {
@@ -1183,15 +1133,13 @@ func (db *DistributedBackend) CompleteUpload(bucket, key, uploadId string, parts
 		return "", err
 	}
 
-	// 清理本地和远程节点的临时数据。
-	db.cleanupDistributedUpload(bucket, uploadId, partsCopy)
+	// 清理本地临时数据。
+	db.local.AbortUpload(bucket, key, uploadId)
 	return etag, nil
 }
 
 func (db *DistributedBackend) AbortUpload(bucket, key, uploadId string) error {
-	parts, _ := db.local.ListParts(bucket, key, uploadId)
-	db.cleanupDistributedUpload(bucket, uploadId, parts)
-	return nil
+	return db.local.AbortUpload(bucket, key, uploadId)
 }
 
 func (db *DistributedBackend) ListParts(bucket, key, uploadId string) ([]PartInfo, error) {
@@ -1220,7 +1168,8 @@ func (db *DistributedBackend) readPartData(bucket, uploadId string, partNumber i
 	return data, nil
 }
 
-// cleanupDistributedUpload 清理本地和副本节点的上传临时数据。
+
+
 func (db *DistributedBackend) cleanupDistributedUpload(bucket, uploadId string, parts []PartInfo) {
 	// 本地清理。
 	db.local.AbortUpload(bucket, "", uploadId)

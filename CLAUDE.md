@@ -170,7 +170,7 @@ src/
 **Disk layout (local, multipart):** `{root}/{bucket}/.uploads/{uploadId}/info.json` for upload metadata, `part-NNNN.bin` for part data, `part-NNNN.bin.meta` for part metadata. Cleaned up after Complete/Abort.
 
 **Disk layout (EC):** `disk-{i}/{bucket}/{key}` for each shard (i=0..N-1), `meta-root/{bucket}/{key}.ec-meta` for EC metadata.
-**Disk layout (EC, multipart):** `disk-{i}/{bucket}/.uploads/{uploadId}/part-NNNN.bin` for each part's shard, `meta-root/{bucket}/.upload-info-{uploadId}` for upload metadata. Per-part EC encoding; assembled and re-encoded on Complete.
+**Disk layout (EC, multipart):** `disk-{i}/{bucket}/.uploads/{uploadId}/part-NNNN.bin` for each part's shard, `meta-root/{bucket}/.uploads/{uploadId}.upload-info` for upload metadata, `meta-root/{bucket}/.uploads/{uploadId}/part-NNNN.ec-meta` for per-part EC shard metadata. Per-part EC encoding; assembled and re-encoded on Complete.
 
 **Disk layout (distributed):** Each node uses LocalBackend layout; consistent hash ring determines which nodes store replicas.
 
