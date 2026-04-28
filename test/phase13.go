@@ -63,8 +63,9 @@ func testPhase13EC() {
 	part1Data := strings.Repeat("A", 1024) // 1 KB
 	part2Data := strings.Repeat("B", 2048) // 2 KB
 
-	_, _, h1 := Do("PUT", fmt.Sprintf("/%s/%s?partNumber=1&uploadId=%s", bucket, key, uploadId), part1Data, ct)
-	_, _, h2 := Do("PUT", fmt.Sprintf("/%s/%s?partNumber=2&uploadId=%s", bucket, key, uploadId), part2Data, ct)
+	status1, _, h1 := Do("PUT", fmt.Sprintf("/%s/%s?partNumber=1&uploadId=%s", bucket, key, uploadId), part1Data, ct)
+	status2, _, h2 := Do("PUT", fmt.Sprintf("/%s/%s?partNumber=2&uploadId=%s", bucket, key, uploadId), part2Data, ct)
+	Pass("EC Multipart: UploadPart 1/2 → 200", status1 == 200 && status2 == 200)
 	etag1 := h1.Get("ETag")
 	etag2 := h2.Get("ETag")
 	Pass("EC Multipart: UploadPart returns ETag", etag1 != "" && etag2 != "")

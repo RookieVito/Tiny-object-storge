@@ -3,12 +3,14 @@ package storage
 import (
 	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1088,7 +1090,7 @@ func (db *DistributedBackend) UploadPart(bucket, key, uploadId string, partNumbe
 	b64Data := base64.StdEncoding.EncodeToString(data)
 	var wg sync.WaitGroup
 	successes := int32(0)
-	var storedPart *PartInfo
+	var firstPart atomic.Pointer[PartInfo]
 
 	for _, nodeID := range reps {
 		wg.Add(1)
@@ -1123,7 +1125,7 @@ func (db *DistributedBackend) UploadPart(bucket, key, uploadId string, partNumbe
 				}
 			}
 			atomic.AddInt32(&successes, 1)
-			storedPart = pi
+			firstPart.CompareAndSwap(nil, pi)
 		}(nodeID)
 	}
 	wg.Wait()
@@ -1131,7 +1133,7 @@ func (db *DistributedBackend) UploadPart(bucket, key, uploadId string, partNumbe
 	if int(successes) < db.config.WriteQuorum {
 		return nil, s3error.ErrWriteQuorumFailed
 	}
-	return storedPart, nil
+	return firstPart.Load(), nil
 }
 
 func (db *DistributedBackend) CompleteUpload(bucket, key, uploadId string, parts []PartInfo) (string, error) {
@@ -1149,16 +1151,33 @@ func (db *DistributedBackend) CompleteUpload(bucket, key, uploadId string, parts
 		assembled = append(assembled, data...)
 	}
 
-	// 计算复合 ETag。
-	hash := md5.Sum(assembled)
-	etag := fmt.Sprintf("\"%x-%d\"", hash, len(partsCopy))
+	// 读取 upload 信息获取 ContentType/UserMetadata。
+	info, err := db.local.GetUploadInfo(bucket, key, uploadId)
+	if err != nil {
+		return "", err
+	}
+
+	// 计算 ETag：MD5(concat of per-part MD5s)-N（与 LocalBackend 一致）。
+	var concatHash []byte
+	for _, part := range partsCopy {
+		etagStr := strings.Trim(part.ETag, "\"")
+		h, _ := hex.DecodeString(etagStr)
+		concatHash = append(concatHash, h...)
+	}
+	etag := fmt.Sprintf("\"%x-%d\"", md5.Sum(concatHash), len(partsCopy))
 
 	// 写入最终对象。
+	contentType := info.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
 	meta := &service.ObjectMeta{
 		Key:          key,
 		Size:         int64(len(assembled)),
 		ETag:         etag,
+		ContentType:  contentType,
 		LastModified: time.Now().UTC(),
+		UserMetadata: info.UserMetadata,
 	}
 	if err := db.PutObject(bucket, key, assembled, meta); err != nil {
 		return "", err

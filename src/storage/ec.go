@@ -3,6 +3,7 @@ package storage
 import (
 	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -497,6 +498,16 @@ func (eb *ECBackend) UploadPart(bucket, key, uploadId string, partNumber int, da
 		LastModified: time.Now().UTC(),
 	}
 	metaData, _ := json.Marshal(partMeta)
+	// 存储 ECPartMeta 到 metaStore（供 ListParts 读取）。
+	pmMeta := &service.ObjectMeta{
+		Key:          ecPartMetaKey(uploadId, partNumber),
+		Size:         int64(len(metaData)),
+		ContentType:  "application/json",
+		LastModified: partMeta.LastModified,
+	}
+	if err := eb.metaStore.PutObject(bucket, ecPartMetaKey(uploadId, partNumber), metaData, pmMeta); err != nil {
+		return nil, err
+	}
 	shardMeta := &service.ObjectMeta{
 		Key:          ecUploadInfoKey(uploadId),
 		Size:         int64(len(metaData)),
@@ -547,7 +558,18 @@ func (eb *ECBackend) CompleteUpload(bucket, key, uploadId string, parts []PartIn
 		if missing > eb.rs.ParityShards() {
 			return "", s3error.ErrInsufficientStorage
 		}
-		if err := eb.rs.Decode(shards, len(shards[0])); err != nil {
+		// 找到一个非 nil shard 获取分片大小（避免 disk 0 故障时 panic）。
+		shardSize := 0
+		for _, s := range shards {
+			if len(s) > 0 {
+				shardSize = len(s)
+				break
+			}
+		}
+		if shardSize == 0 {
+			return "", s3error.ErrInsufficientStorage
+		}
+		if err := eb.rs.Decode(shards, shardSize); err != nil {
 			return "", err
 		}
 		recovered := make([]byte, 0, part.Size)
@@ -557,17 +579,34 @@ func (eb *ECBackend) CompleteUpload(bucket, key, uploadId string, parts []PartIn
 		assembled = append(assembled, recovered[:part.Size]...)
 	}
 
-	// 计算 MD5。
-	md5Hash := md5.Sum(assembled)
-	etag := fmt.Sprintf("\"%x-%d\"", md5Hash, len(parts))
+	// 读取 upload 信息获取 ContentType/UserMetadata。
+	info, err := eb.GetUploadInfo(bucket, key, uploadId)
+	if err != nil {
+		return "", err
+	}
+
+	// 计算 ETag：MD5(concat of per-part MD5s)-N（与 LocalBackend 一致）。
+	var concatHash []byte
+	for _, part := range parts {
+		// part.ETag 格式: "<md5hex>"，去掉引号得到原始 hex
+		etagStr := strings.Trim(part.ETag, "\"")
+		h, _ := hex.DecodeString(etagStr)
+		concatHash = append(concatHash, h...)
+	}
+	etag := fmt.Sprintf("\"%x-%d\"", md5.Sum(concatHash), len(parts))
 
 	// 作为普通对象 EC Encode 写入。
+	contentType := info.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
 	objMeta := &service.ObjectMeta{
 		Key:          key,
 		Size:         int64(len(assembled)),
 		ETag:         etag,
-		ContentType:  "", // 由 Complete 时设置
+		ContentType:  contentType,
 		LastModified: time.Now().UTC(),
+		UserMetadata: info.UserMetadata,
 	}
 	if err := eb.PutObject(bucket, key, assembled, objMeta); err != nil {
 		return "", err
@@ -592,27 +631,24 @@ func (eb *ECBackend) AbortUpload(bucket, key, uploadId string) error {
 }
 
 func (eb *ECBackend) ListParts(bucket, key, uploadId string) ([]PartInfo, error) {
-	// 从磁盘 0 读取 info.json 中存储的 parts。
-	// 由于 EC multipart 的 part meta 存在各磁盘上，我们通过遍历磁盘 0 的
-	// upload 目录来发现 parts。
 	if ok, err := eb.metaStore.BucketExists(bucket); err != nil {
 		return nil, err
 	} else if !ok {
 		return nil, s3error.ErrNoSuchBucket
 	}
 
-	// 通过 info.json 无法知道哪些 parts 存在，所以遍历磁盘 0 的 .uploads 目录。
-	entries, _, _, _, err := eb.disks[0].ListObjects(bucket, ".uploads/"+uploadId+"/", "", "", 10000)
+	// 从 metaStore 中列出该 uploadId 的所有 part 元数据。
+	entries, _, _, _, err := eb.metaStore.ListObjects(bucket, ".uploads/"+uploadId+"/", "", "", 10000)
 	if err != nil {
 		return nil, err
 	}
 
 	var result []PartInfo
 	for _, e := range entries {
-		if !strings.HasPrefix(e.Key, ".uploads/"+uploadId+"/part-") || !strings.HasSuffix(e.Key, ".bin.ec-meta") {
+		if !strings.HasPrefix(e.Key, ".uploads/"+uploadId+"/part-") || !strings.HasSuffix(e.Key, ".ec-meta") {
 			continue
 		}
-		data, _, err := eb.disks[0].GetObject(bucket, e.Key)
+		data, _, err := eb.metaStore.GetObject(bucket, e.Key)
 		if err != nil {
 			continue
 		}
@@ -696,12 +732,17 @@ func ecPartKey(uploadId string, partNumber int) string {
 	return fmt.Sprintf(".uploads/%s/part-%04d.bin", uploadId, partNumber)
 }
 
+func ecPartMetaKey(uploadId string, partNumber int) string {
+	return fmt.Sprintf(".uploads/%s/part-%04d.ec-meta", uploadId, partNumber)
+}
+
 func (eb *ECBackend) cleanupECUpload(bucket, uploadId string, parts []PartInfo) {
 	for _, part := range parts {
 		partKey := ecPartKey(uploadId, part.PartNumber)
 		for _, disk := range eb.disks {
 			disk.DeleteObject(bucket, partKey)
 		}
+		eb.metaStore.DeleteObject(bucket, ecPartMetaKey(uploadId, part.PartNumber))
 	}
 	eb.metaStore.DeleteObject(bucket, ecUploadInfoKey(uploadId))
 }
