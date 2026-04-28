@@ -952,62 +952,6 @@ func (db *DistributedBackend) HandleReplicate(w http.ResponseWriter, r *http.Req
 		resp.Status = 200
 		resp.Data = string(data)
 
-	case "multipart_upload_part":
-		data, err := base64.StdEncoding.DecodeString(req.Data)
-		if err != nil {
-			writeReplicateError(w, http.StatusBadRequest, "invalid base64 data: %v", err)
-			return
-		}
-		pi, err := db.local.UploadPart(req.Bucket, req.Key, req.UploadId, req.PartNumber, data)
-		if err != nil {
-			writeReplicateS3Err(w, resp, err)
-			return
-		}
-		resp.Status = 200
-		resp.Meta = &cluster.ObjectMetaMsg{ETag: pi.ETag}
-
-	case "multipart_abort":
-		db.local.AbortUpload(req.Bucket, "", req.UploadId)
-		resp.Status = 200
-
-	case "multipart_list_parts":
-		parts, err := db.local.ListParts(req.Bucket, req.Key, req.UploadId)
-		if err != nil {
-			writeReplicateS3Err(w, resp, err)
-			return
-		}
-		partMsgs := make([]cluster.PartInfoMsg, len(parts))
-		for i, p := range parts {
-			partMsgs[i] = cluster.PartInfoMsg{
-				PartNumber:   p.PartNumber,
-				Size:         p.Size,
-				ETag:         p.ETag,
-				LastModified: p.LastModified.Format(time.RFC3339),
-			}
-		}
-		partsData, _ := json.Marshal(partMsgs)
-		resp.Status = 200
-		resp.Data = string(partsData)
-
-	case "multipart_get_info":
-		info, err := db.local.GetUploadInfo(req.Bucket, req.Key, req.UploadId)
-		if err != nil {
-			writeReplicateS3Err(w, resp, err)
-			return
-		}
-		infoData, _ := json.Marshal(info)
-		resp.Status = 200
-		resp.Data = string(infoData)
-
-	case "multipart_read_part":
-		data, err := db.readPartData(req.Bucket, req.UploadId, req.PartNumber)
-		if err != nil {
-			writeReplicateS3Err(w, resp, err)
-			return
-		}
-		resp.Status = 200
-		resp.Data = base64.StdEncoding.EncodeToString(data)
-
 	default:
 		writeReplicateError(w, http.StatusBadRequest, "unknown operation: %s", req.Operation)
 		return
@@ -1170,24 +1114,3 @@ func (db *DistributedBackend) readPartData(bucket, uploadId string, partNumber i
 
 
 
-func (db *DistributedBackend) cleanupDistributedUpload(bucket, uploadId string, parts []PartInfo) {
-	// 本地清理。
-	db.local.AbortUpload(bucket, "", uploadId)
-
-	// RPC 清理副本节点。
-	reps := db.replicas(bucket + "/multipart/" + uploadId)
-	for _, nodeID := range reps {
-		if db.isSelf(nodeID) {
-			continue
-		}
-		go func(node string) {
-			req := &cluster.StorageRequest{
-				RequestID: db.nextRequestID(),
-				Operation: "multipart_abort",
-				Bucket:    bucket,
-				UploadId:  uploadId,
-			}
-			db.transport.Replicate(cluster.NodeID(node), req)
-		}(nodeID)
-	}
-}

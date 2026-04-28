@@ -189,5 +189,6 @@ src/
 
 - 使用中文编写文档和注释，专业术语保留英文原文（如 Bucket、ETag、delimiter、ServeMux）
 - 新增功能必须同步编写测试，写入 `test/` 目录下对应的 phase 文件中
-- 每个 Phase 完成时，运行 `./test/scripts/run.sh` 全量回归测试，确认所有测试通过后再标记完成
-- 每个 Phase 完成时，必须同步更新 `docs/` 目录下的相关文档（architecture.md、usage.md、phase summary、技术设计文档等），保持文档与代码一致
+- 每个 Phase 完成时，首先执行 `/review` 审查代码，并执行`./test/scripts/run.sh` 全量回归测试，测试通过，审查没有问题时，进行下一步文档更新。
+- 文档更新：必须同步更新 `docs/` 目录下的相关文档（architecture.md、usage.md、phase summary、技术设计文档等），保持文档与代码一致。
+- 如果实现、测试、审查、文档更新全部完成，则可以标记完成。

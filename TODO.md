@@ -96,9 +96,8 @@
 ## Phase 13: EC/Distributed Multipart Upload ✅
 
 - [x] **EC multipart**（src/storage/ec.go）— per-part EC 编解码、元数据管理
-- [x] **Distributed multipart**（src/storage/distributed.go）— coordinator 模式、RPC 协调、quorum 确认
+- [x] **Distributed multipart**（src/storage/distributed.go）— coordinator 模式、UploadPart 本地存储、CompleteUpload quorum 写入
 - [x] **Cluster RPC 扩展**（src/cluster/protocol.go）— `PartInfoMsg`、`UploadId`/`PartNumber`/`Parts` 字段
-- [x] **HandleReplicate 分发** — 5 个 multipart RPC 操作（upload_part/abort/list_parts/get_info/read_part）
 - [x] 替换 EC/Distributed 后端的 ErrNotImplemented stub
 - [x] 集成测试 `test/phase13.go`（EC + 分布式全流程）
 
