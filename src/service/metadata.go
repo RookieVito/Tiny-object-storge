@@ -22,6 +22,9 @@ type ObjectMeta struct {
 	ContentType  string            `json:"content_type"`
 	LastModified time.Time         `json:"last_modified"`
 	UserMetadata map[string]string `json:"user_metadata,omitempty"`
+	VersionId      string `json:"version_id,omitempty"`
+	IsLatest       bool   `json:"is_latest,omitempty"`
+	IsDeleteMarker bool   `json:"is_delete_marker,omitempty"`
 }
 
 // WriteMeta 原子写入元数据 JSON 到 metaPath。

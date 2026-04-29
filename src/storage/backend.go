@@ -95,3 +95,29 @@ func isS3Err(err error) bool {
 	_, ok := err.(*s3error.S3APIError)
 	return ok
 }
+
+// VersionEntry 包含 ListObjectVersions 返回的版本条目信息。
+type VersionEntry struct {
+	Key            string
+	VersionId      string
+	IsLatest       bool
+	IsDeleteMarker bool
+	ETag           string
+	Size           int64
+	StorageClass   string
+	LastModified   time.Time
+}
+
+// VersionedStorage 定义对象版本控制的存储接口。
+// 后端可选实现此接口，未实现时 handler 返回 ErrNotImplemented。
+type VersionedStorage interface {
+	PutBucketVersioning(bucket, status string) error
+	GetBucketVersioning(bucket string) (string, error)
+	GetObjectVersion(bucket, key, versionId string) ([]byte, *service.ObjectMeta, error)
+	HeadObjectVersion(bucket, key, versionId string) (*service.ObjectMeta, error)
+	DeleteObjectVersion(bucket, key, versionId string) error
+	ListObjectVersions(bucket, prefix, delimiter, keyMarker, versionIdMarker string, maxKeys int) (
+		versions, deleteMarkers []VersionEntry, commonPrefixes []string,
+		nextKeyMarker, nextVersionIdMarker string, isTruncated bool, err error,
+	)
+}

@@ -21,19 +21,31 @@ func NewRouter(backend storage.StorageBackend, cfg *config.Config, m *metrics.Me
 	bm := NewBucketManager(backend, bucketLocks)
 	om := NewObjectManager(backend, bucketLocks, cfg.MaxBodySize)
 	mm := NewMultipartManager(backend, bucketLocks, cfg.MaxBodySize)
+	vm := NewVersioningManager(backend)
 	a := auth.NewAuthenticatorWithRegion(cfg.AccessKey, cfg.SecretKey, cfg.Region)
 
 	mux := http.NewServeMux()
 
 	// Bucket 操作。
 	mux.HandleFunc("GET /{$}", bm.ListBuckets)
-	mux.HandleFunc("PUT /{bucket}", authWrap(a, "bucket", bm.CreateBucket))
+	mux.HandleFunc("PUT /{bucket}", authWrap(a, "bucket", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has("versioning") {
+			vm.PutBucketVersioning(w, r)
+		} else {
+			bm.CreateBucket(w, r)
+		}
+	}))
 	mux.HandleFunc("DELETE /{bucket}", authWrap(a, "bucket", bm.DeleteBucket))
 	mux.HandleFunc("HEAD /{bucket}", authWrap(a, "bucket", bm.HeadBucket))
-	// GET /{bucket} 同时处理 ListObjects 和 ListMultipartUploads（?uploads 参数）。
+	// GET /{bucket} 同时处理 ListObjects、ListMultipartUploads、GetBucketVersioning 和 ListObjectVersions。
 	mux.HandleFunc("GET /{bucket}", authWrap(a, "bucket", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Has("uploads") {
+		q := r.URL.Query()
+		if q.Has("versioning") {
+			vm.GetBucketVersioning(w, r)
+		} else if q.Has("uploads") {
 			mm.ListMultipartUploads(w, r)
+		} else if q.Has("versions") {
+			vm.ListObjectVersions(w, r)
 		} else {
 			bm.ListObjects(w, r)
 		}

@@ -58,6 +58,9 @@ func (om *ObjectManager) PutObject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("ETag", meta.ETag)
+	if meta.VersionId != "" {
+		w.Header().Set("x-amz-version-id", meta.VersionId)
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -65,8 +68,21 @@ func (om *ObjectManager) PutObject(w http.ResponseWriter, r *http.Request) {
 func (om *ObjectManager) GetObject(w http.ResponseWriter, r *http.Request) {
 	bucket := r.PathValue("bucket")
 	key := r.PathValue("key")
+	versionId := r.URL.Query().Get("versionId")
 
-	data, meta, err := om.backend.GetObject(bucket, key)
+	var data []byte
+	var meta *service.ObjectMeta
+	var err error
+
+	if versionId != "" {
+		vs := om.getVersionedStorage(w, r)
+		if vs == nil {
+			return
+		}
+		data, meta, err = vs.GetObjectVersion(bucket, key, versionId)
+	} else {
+		data, meta, err = om.backend.GetObject(bucket, key)
+	}
 	if err != nil {
 		if isS3Err(err) {
 			s3error.WriteS3Err(w, err.(*s3error.S3APIError), r.URL.Path)
@@ -114,6 +130,16 @@ func (om *ObjectManager) GetObject(w http.ResponseWriter, r *http.Request) {
 	writeFullObject(w, meta, data)
 }
 
+// getVersionedStorage 获取 VersionedStorage，未实现时返回 501。
+func (om *ObjectManager) getVersionedStorage(w http.ResponseWriter, r *http.Request) storage.VersionedStorage {
+	vs, ok := om.backend.(storage.VersionedStorage)
+	if !ok {
+		s3error.WriteS3Err(w, s3error.ErrNotImplemented, r.URL.Path)
+		return nil
+	}
+	return vs
+}
+
 // writeFullObject 写入完整的对象响应（200 OK）。
 func writeFullObject(w http.ResponseWriter, meta *service.ObjectMeta, data []byte) {
 	w.Header().Set("Content-Type", meta.ContentType)
@@ -121,6 +147,9 @@ func writeFullObject(w http.ResponseWriter, meta *service.ObjectMeta, data []byt
 	w.Header().Set("ETag", meta.ETag)
 	w.Header().Set("Last-Modified", meta.LastModified.UTC().Format(http.TimeFormat))
 	w.Header().Set("Accept-Ranges", "bytes")
+	if meta.VersionId != "" {
+		w.Header().Set("x-amz-version-id", meta.VersionId)
+	}
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
 }
@@ -129,8 +158,20 @@ func writeFullObject(w http.ResponseWriter, meta *service.ObjectMeta, data []byt
 func (om *ObjectManager) HeadObject(w http.ResponseWriter, r *http.Request) {
 	bucket := r.PathValue("bucket")
 	key := r.PathValue("key")
+	versionId := r.URL.Query().Get("versionId")
 
-	meta, err := om.backend.HeadObject(bucket, key)
+	var meta *service.ObjectMeta
+	var err error
+
+	if versionId != "" {
+		vs := om.getVersionedStorage(w, r)
+		if vs == nil {
+			return
+		}
+		meta, err = vs.HeadObjectVersion(bucket, key, versionId)
+	} else {
+		meta, err = om.backend.HeadObject(bucket, key)
+	}
 	if err != nil {
 		if isS3Err(err) {
 			s3error.WriteS3Err(w, err.(*s3error.S3APIError), r.URL.Path)
@@ -144,6 +185,9 @@ func (om *ObjectManager) HeadObject(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", meta.ETag)
 	w.Header().Set("Last-Modified", meta.LastModified.UTC().Format(http.TimeFormat))
 	w.Header().Set("Accept-Ranges", "bytes")
+	if meta.VersionId != "" {
+		w.Header().Set("x-amz-version-id", meta.VersionId)
+	}
 
 	rangeHeader := r.Header.Get("Range")
 	if rangeHeader != "" {
@@ -176,9 +220,28 @@ func (om *ObjectManager) HeadObject(w http.ResponseWriter, r *http.Request) {
 func (om *ObjectManager) DeleteObject(w http.ResponseWriter, r *http.Request) {
 	bucket := r.PathValue("bucket")
 	key := r.PathValue("key")
+	versionId := r.URL.Query().Get("versionId")
 
 	om.locks.Lock(bucket)
 	defer om.locks.Unlock(bucket)
+
+	if versionId != "" {
+		vs := om.getVersionedStorage(w, r)
+		if vs == nil {
+			return
+		}
+		if err := vs.DeleteObjectVersion(bucket, key, versionId); err != nil {
+			if isS3Err(err) {
+				s3error.WriteS3Err(w, err.(*s3error.S3APIError), r.URL.Path)
+				return
+			}
+			s3error.WriteS3Error(w, "InternalError", err.Error(), http.StatusInternalServerError, r.URL.Path)
+			return
+		}
+		w.Header().Set("x-amz-version-id", versionId)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 
 	if err := om.backend.DeleteObject(bucket, key); err != nil {
 		if isS3Err(err) {
@@ -187,6 +250,14 @@ func (om *ObjectManager) DeleteObject(w http.ResponseWriter, r *http.Request) {
 		}
 		s3error.WriteS3Error(w, "InternalError", err.Error(), http.StatusInternalServerError, r.URL.Path)
 		return
+	}
+
+	// 版本化 bucket 的 delete 返回 delete marker 头。
+	if vs, ok := om.backend.(storage.VersionedStorage); ok {
+		status, _ := vs.GetBucketVersioning(bucket)
+		if status == "Enabled" {
+			w.Header().Set("x-amz-delete-marker", "true")
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)

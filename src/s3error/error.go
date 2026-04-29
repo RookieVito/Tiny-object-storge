@@ -49,6 +49,11 @@ var (
 	// Presigned URL 错误。
 	ErrExpiredPresign  = &S3APIError{"AccessDenied", "Request has expired.", http.StatusForbidden}
 	ErrInvalidExpires  = &S3APIError{"InvalidArgument", "X-Amz-Expires must be between 1 and 604800.", http.StatusBadRequest}
+
+	// 版本控制错误。
+	ErrVersioningAlreadyEnabled   = &S3APIError{"VersioningAlreadyEnabled", "Versioning is already enabled.", http.StatusBadRequest}
+	ErrVersioningAlreadySuspended = &S3APIError{"VersioningAlreadySuspended", "Versioning is already suspended.", http.StatusBadRequest}
+	ErrNoSuchVersion               = &S3APIError{"NoSuchVersion", "The specified version does not exist.", http.StatusNotFound}
 )
 
 // s3ErrorResponse 是 S3 错误的 XML 信封。

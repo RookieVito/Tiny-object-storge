@@ -121,7 +121,7 @@ src/
   service/                   # 业务层：ObjectMeta、原子读写、Content-Type 检测
   metrics/                   # 可观测性层：Metrics (atomic 计数 + 文件系统扫描)
   ec/                        # 纠删码层：GF256 有限域 + ReedSolomon 编解码器
-  storage/                   # 存储抽象层：StorageBackend + MultipartStorage 接口 + LocalBackend + ECBackend + DistributedBackend + ECDistributedBackend + TTLCleaner
+  storage/                   # 存储抽象层：StorageBackend + MultipartStorage 接口 + LocalBackend + ECBackend + DistributedBackend + ECDistributedBackend + TTLCleaner + VersionedBackend
   handler/                   # HTTP 层：BucketManager、ObjectManager、MultipartManager、router、middleware
 ```
 
@@ -150,16 +150,19 @@ src/
 - `PartInfo` (src/storage) — 已上传 part 的元数据（PartNumber、Size、ETag、LastModified）
 - `UploadInfo` (src/storage) — 进行中 multipart upload 的元数据（UploadId、Bucket、Key、ContentType、UserMetadata、Initiated）
 - `MultipartManager` (src/handler) — multipart upload HTTP handler，6 个端点，通过 type assertion 检测后端支持
+- `VersionedBackend` (src/storage) — 装饰器模式版本控制，包装任意 StorageBackend，归档版本存储在内部后端 `.versions/` 下
+- `VersionedStorage` (src/storage) — 可选接口，定义版本控制的 6 个方法（PutBucketVersioning、GetBucketVersioning、GetObjectVersion、HeadObjectVersion、DeleteObjectVersion、ListObjectVersions）
+- `VersioningManager` (src/handler) — 版本控制 HTTP handler，处理 `?versioning` 和 `?versions` 查询参数
 
 **Route table:**
 - `GET /{$}` — ListBuckets (no auth)
-- `PUT/DELETE/HEAD /{bucket}` — bucket ops (auth required)
-- `GET /{bucket}` — ListObjects (auth); `?uploads` → ListMultipartUploads
+- `PUT/DELETE/HEAD /{bucket}` — bucket ops (auth required); `PUT ?versioning` → PutBucketVersioning
+- `GET /{bucket}` — ListObjects (auth); `?uploads` → ListMultipartUploads; `?versioning` → GetBucketVersioning; `?versions` → ListObjectVersions
 - `POST /{bucket}/{key...}` — `?uploads` → InitiateMultipartUpload; `?uploadId` → CompleteMultipartUpload (auth required)
 - `PUT /{bucket}/{key...}` — PutObject; `?uploadId` → UploadPart (auth required)
-- `GET /{bucket}/{key...}` — GetObject; `?uploadId` → ListParts (auth required)
-- `HEAD /{bucket}/{key...}` — HeadObject (auth required)
-- `DELETE /{bucket}/{key...}` — DeleteObject; `?uploadId` → AbortMultipartUpload (auth required)
+- `GET /{bucket}/{key...}` — GetObject (auth); `?uploadId` → ListParts; `?versionId` → GetObjectVersion
+- `HEAD /{bucket}/{key...}` — HeadObject (auth); `?versionId` → HeadObjectVersion
+- `DELETE /{bucket}/{key...}` — DeleteObject (auth); `?uploadId` → AbortMultipartUpload; `?versionId` → DeleteObjectVersion
 - `GET/HEAD /_metrics` — metrics endpoint (no auth)
 - `GET /_ui/{path...}` — Web UI 静态资源 (no auth, SPA fallback, embed.FS)
 - `POST /_cluster/ping|ping-req|join|leave` — Gossip 协议 (no auth, distributed mode)
@@ -169,6 +172,7 @@ src/
 **ListObjectsV2 algorithm:** WalkDir → collect keys + read .meta → sort → prefix filter → start-after pagination → delimiter grouping (CommonPrefixes) → max-keys truncation → base64 continuation token.
 
 **Disk layout (local):** `{root}/{bucket}/{key}` for data, `{root}/{bucket}/{key}.meta` for JSON metadata.
+**Disk layout (local, versioned):** `{root}/{bucket}/.bucket-meta` for versioning config, `{root}/{bucket}/.versions/{safeKey}/{versionId}` for archived versions, `{root}/{bucket}/.versions/{safeKey}/.dm-{versionId}` for delete markers (zero-byte), `{root}/{bucket}/.versions/{safeKey}/.current-delete-marker` sentinel when latest version is a delete marker.
 **Disk layout (local, multipart):** `{root}/{bucket}/.uploads/{uploadId}/info.json` for upload metadata, `part-NNNN.bin` for part data, `part-NNNN.bin.meta` for part metadata. Cleaned up after Complete/Abort.
 
 **Disk layout (EC):** `disk-{i}/{bucket}/{key}` for each shard (i=0..N-1), `meta-root/{bucket}/{key}.ec-meta` for EC metadata.

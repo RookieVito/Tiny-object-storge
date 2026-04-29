@@ -108,14 +108,17 @@
 - [x] **Metrics** — 新增 MultipartCleanups 计数器
 - [x] 集成测试 `test/phase14.go`
 
-## Phase 15: 对象版本控制 🔜
+## Phase 15: 对象版本控制 ✅
 
-- [ ] **VersionedStorage 接口** — SetBucketVersioning/GetBucketVersioning/PutObjectVersion/GetObjectVersion 等
-- [ ] **VersionedBackend 装饰器**（src/storage/versioning.go）— 包装任意 StorageBackend
-- [ ] **ObjectMeta 扩展** — 新增 VersionId、IsDeleteMarker、IsLatest 字段
-- [ ] **Handler 支持** — Get/Put/Delete/Head 支持 `?versionId=X`
-- [ ] **版本路由** — `?versioning`、`?versions` 路由分发
-- [ ] 集成测试 `test/phase15.go`
+- [x] **VersionedStorage 接口** — PutBucketVersioning/GetBucketVersioning/GetObjectVersion/HeadObjectVersion/DeleteObjectVersion/ListObjectVersions
+- [x] **VersionedBackend 装饰器**（src/storage/versioning.go）— 包装任意 StorageBackend，后端无关的版本存储
+- [x] **ObjectMeta 扩展** — 新增 VersionId、IsDeleteMarker、IsLatest 字段
+- [x] **Handler 支持** — Get/Put/Delete/Head 支持 `?versionId=X`，DeleteObject 返回 `x-amz-delete-marker` 头
+- [x] **Delete Marker** — 版本化 bucket 的 DeleteObject 创建 delete marker（零字节 + 哨兵），不真正删除数据
+- [x] **版本路由** — `?versioning`（Put/Get）、`?versions`（ListObjectVersions）路由分发
+- [x] **MultipartStorage 委托** — 直接委托给 inner，版本化 bucket 的 multipart 不创建版本
+- [x] **磁盘布局** — `.versions/{safeKey}/{versionId}` 归档、`.dm-{versionId}` delete marker 编码、`.bucket-meta` 版本配置
+- [x] 集成测试 `test/phase15.go`（47 个）
 
 ## Phase 16: 磁盘健康监控和 Rebalance 🔜
 

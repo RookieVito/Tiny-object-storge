@@ -42,6 +42,10 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 │  │  Quorum R/W (N=3, W=2, R=2)                    │ │
 │  │  HTTP RPC (/_cluster/*) │ Transport              │ │
 │  └─────────────────────────────────────────────────┘ │
+│  ┌─ VersionedBackend (Phase 15) ──────────────────┐ │
+│  │  装饰器：为任意 StorageBackend 添加版本控制    │ │
+│  │  .versions/ 归档 │ .bucket-meta 配置          │ │
+│  └─────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -69,6 +73,8 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 | **Transport** | cluster/transport.go | HTTP RPC 通信层（Ping/Join/Replicate） |
 | **DistributedBackend** | storage/distributed.go | Quorum R/W 分布式存储后端，coordinator 模式，replicas() 通过 AliveNodes 过滤 |
 | **TTLCleaner** | storage/cleanup.go | 后台 goroutine 定期扫描过期 multipart upload 并 AbortUpload 清理 |
+| **VersionedBackend** | storage/versioning.go | 装饰器：为任意 StorageBackend 添加对象版本控制 |
+| **VersioningManager** | handler/versioning.go | Versioning HTTP handler（PutBucketVersioning/GetBucketVersioning/ListObjectVersions） |
 
 ---
 
@@ -77,8 +83,15 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 ```
 {storage_root}/
 ├── my-bucket/
-│   ├── hello.txt                    # data file
-│   ├── hello.txt.meta               # metadata (JSON)
+│   ├── hello.txt                    # data file（当前版本）
+│   ├── hello.txt.meta               # metadata (JSON, 含 version_id)
+│   ├── .bucket-meta                 # 版本控制配置 JSON
+│   ├── .versions/                   # 版本归档（ListObjects 跳过）
+│   │   └── dir%2Ffile.txt/
+│   │       ├── {uuid-v4}            # 归档版本数据
+│   │       ├── {uuid-v4}.meta        # 归档版本元数据
+│   │       ├── .dm-{uuid-v4}         # delete marker（零字节）
+│   │       └── .dm-{uuid-v4}.meta  # delete marker 元数据
 │   ├── .uploads/                    # multipart 临时目录（ListObjects 跳过）
 │   │   └── {uploadId}/
 │   │       ├── info.json            # UploadInfo 元数据
@@ -102,6 +115,9 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
   "etag": "\"d41d8cd98f00b204e9800998ecf8427e\"",
   "content_type": "image/jpeg",
   "last_modified": "2024-01-15T10:30:00Z",
+  "version_id": "a1b2c3d4-...-uuid-v4",
+  "is_latest": true,
+  "is_delete_marker": false,
   "user_metadata": {
     "X-Amz-Meta-Author": "vito"
   }
@@ -141,6 +157,9 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 | AbortMultipartUpload | DELETE | `/{bucket}/{key...}?uploadId=X` | Phase 8 |
 | ListParts | GET | `/{bucket}/{key...}?uploadId=X` | Phase 8 |
 | ListMultipartUploads | GET | `/{bucket}?uploads` | Phase 8 |
+| PutBucketVersioning | PUT | `/{bucket}?versioning` | Phase 15 |
+| GetBucketVersioning | GET | `/{bucket}?versioning` | Phase 15 |
+| ListObjectVersions | GET | `/{bucket}?versions` | Phase 15 |
 
 ### Route Registration (Go ServeMux patterns)
 
@@ -502,5 +521,4 @@ cmd/server/     ← handler, config, storage
 - [x] 集成测试 `test/phase17.go`（6 节点 4+2 EC，节点故障后读写）
 
 ### Future Enhancements (post-MVP)
-- Object versioning
 - 磁盘健康监控和自动 rebalance

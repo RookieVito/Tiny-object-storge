@@ -23,6 +23,7 @@
 | [metadata-sidecar.md](technical/metadata-sidecar.md) | .meta 侧边文件格式、ObjectMeta 结构 |
 | [erasure-coding.md](technical/erasure-coding.md) | GF(2^8)、Reed-Solomon 编解码、ECBackend |
 | [multipart-upload.md](technical/multipart-upload.md) | 分片上传协议、MultipartStorage 接口 |
+| [versioning.md](technical/versioning.md) | 对象版本控制、VersionedBackend 装饰器、Delete Marker |
 
 ### 分布式系统
 | 文档 | 主题 |
@@ -67,6 +68,7 @@
 | **EC 编解码**（ec/） | `erasure-coding.md`, `architecture.md`§Disk layout(EC) |
 | **分布式**（hash/, cluster/） | `consistent-hashing.md`, `gossip-protocol.md`, `quorum-read-write.md` |
 | **Multipart** | `multipart-upload.md`, `s3-protocol.md`, `architecture.md`§Disk layout(multipart) |
+| **版本控制**（storage/versioning） | `versioning.md`, `storage-backend-interface.md`, `architecture.md`§Disk layout, `metadata-sidecar.md` |
 | **CLI 客户端**（cmd/client/） | `usage.md`§2, `CLAUDE.md`§CLI Client |
 | **Web UI**（web/） | `usage.md`§1, `CLAUDE.md`§Web UI |
 | **Config**（config/） | `usage.md`§5, `architecture.md`§Key types |
@@ -91,6 +93,7 @@
 | `http-routing` | go-serve-mux.md, middleware-chain.md |
 | `cors` | middleware-chain.md, index.md, architecture.md, usage.md |
 | `multipart` | multipart-upload.md, storage-backend-interface.md |
+| `versioning` | versioning.md, storage-backend-interface.md, architecture.md |
 | `security` | aws-sig-v2.md, path-traversal.md |
 | `storage` | storage-backend-interface.md, atomic-writes.md, metadata-sidecar.md, erasure-coding.md |
 | `observability` | metrics.md, middleware-chain.md |

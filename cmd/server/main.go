@@ -188,6 +188,9 @@ func main() {
 		slog.Info("TTL cleaner started", "ttl_seconds", cfg.MultipartTTLSeconds, "interval_seconds", cfg.CleanupIntervalSec)
 	}
 
+	// 包装 VersionedBackend 装饰器，为所有后端添加对象版本控制。
+	backend = storage.NewVersionedBackend(backend)
+
 	// 分布式模式：获取集群 HTTP handler。
 	var clusterHandler http.Handler
 	switch cfg.BackendType {
