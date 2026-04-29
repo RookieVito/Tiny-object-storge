@@ -17,7 +17,9 @@ type Config struct {
 	Region      string            `json:"region"`        // AWS region for Sig V4（默认 "us-east-1"）
 	CORS        CORSConfig         `json:"cors"`         // CORS 配置
 	EC          ECConfig          `json:"ec"`            // EC 配置（仅 backend_type="ec" 时使用）
-	Distributed DistributedConfig `json:"distributed"`    // 分布式配置（仅 backend_type="distributed" 时使用）
+	Distributed         DistributedConfig `json:"distributed"`          // 分布式配置（仅 backend_type="distributed" 时使用）
+	MultipartTTLSeconds int              `json:"multipart_ttl_seconds"` // 过期 multipart upload 清理阈值（默认 86400 = 24h）
+	CleanupIntervalSec  int              `json:"cleanup_interval_sec"`  // 过期上传扫描间隔（默认 3600 = 1h）
 }
 
 // CORSConfig CORS 跨域配置。
@@ -119,6 +121,12 @@ func (c *Config) SetDefaults() {
 		c.Region = "us-east-1"
 	}
 	c.CORS.SetCORSDefaults()
+	if c.MultipartTTLSeconds == 0 {
+		c.MultipartTTLSeconds = 86400
+	}
+	if c.CleanupIntervalSec == 0 {
+		c.CleanupIntervalSec = 3600
+	}
 }
 
 // LoadConfig 读取 JSON 配置文件。文件不存在时返回默认值。

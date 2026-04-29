@@ -29,7 +29,7 @@ go build -o "$ROOT/server" ./cmd/server/ || fail "build failed"
 run_local_tests() {
     echo ""
     echo "========================================"
-    echo "  Local Mode Tests (Phase 1-9)"
+    echo "  Local Mode Tests (Phase 1-14)"
     echo "========================================"
 
     cleanup
@@ -40,7 +40,7 @@ run_local_tests() {
     SERVER_PIDS+=($!)
     sleep 1
 
-    echo "==> Running Phase 1-9..."
+    echo "==> Running Phase 1-14..."
     go run ./test/ 2>&1
     LOCAL_EXIT=$?
 

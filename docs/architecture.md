@@ -68,6 +68,7 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 | **GossipMembership** | cluster/member.go | SWIM 简化版 Gossip 协议，Ping/PingReq/Suspect/Dead |
 | **Transport** | cluster/transport.go | HTTP RPC 通信层（Ping/Join/Replicate） |
 | **DistributedBackend** | storage/distributed.go | Quorum R/W 分布式存储后端，coordinator 模式，replicas() 通过 AliveNodes 过滤 |
+| **TTLCleaner** | storage/cleanup.go | 后台 goroutine 定期扫描过期 multipart upload 并 AbortUpload 清理 |
 
 ---
 
@@ -317,6 +318,7 @@ tiny-object-storge/
 │   │   ├── backend.go         # StorageBackend 接口 + MultipartStorage 接口（存储抽象层）
 │   │   ├── local.go           # LocalBackend 本地文件系统实现
 │   │   ├── multipart.go       # LocalBackend MultipartStorage 实现
+│   │   ├── cleanup.go         # TTLCleaner 后台过期 multipart upload 清理
 │   │   ├── ec.go              # ECBackend 纠删码实现
 │   │   └── distributed.go     # DistributedBackend Quorum R/W 分布式实现
 │   └── handler/
@@ -482,6 +484,13 @@ cmd/server/     ← handler, config, storage
 - [x] 替换 EC/Distributed 后端的 ErrNotImplemented stub
 - [x] 集成测试 `test/phase13.go`
 
+### Phase 14: TTL 自动清理 ✅
+- [x] **TTLCleaner**（src/storage/cleanup.go）— 后台 goroutine 定期扫描过期 multipart upload
+- [x] **Config** — `MultipartTTLSeconds`（默认 86400 = 24h）、`CleanupIntervalSec`（默认 3600 = 1h）
+- [x] **Metrics** — 新增 `MultipartCleanups` 计数器（`GET /_metrics` 暴露）
+- [x] context-based 优雅停止，首次启动立即清理，分页扫描，竞态容错
+- [x] 16 个集成测试（过期清理、未过期保留、metrics 计数、CompleteUpload 不受影响）
+
 ### Phase 17: 分布式纠删码存储 ✅
 - [x] **ECDistributedBackend**（src/storage/ec_distributed.go）— RS 编码后分片分布到不同节点，非完整复制
 - [x] **ECDistMeta** — 记录分片到节点的映射（`ShardNodes`），支持故障后精确定位分片
@@ -495,4 +504,3 @@ cmd/server/     ← handler, config, storage
 ### Future Enhancements (post-MVP)
 - Object versioning
 - 磁盘健康监控和自动 rebalance
-- TTL 自动清理过期 upload

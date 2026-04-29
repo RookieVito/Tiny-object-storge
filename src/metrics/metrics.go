@@ -14,9 +14,10 @@ import (
 // 请求数和错误数通过 atomic 计数器实时累加，
 // bucket 数和存储字节数通过按需扫描文件系统获取。
 type Metrics struct {
-	TotalRequests atomic.Int64
-	TotalErrors   atomic.Int64
-	root          string
+	TotalRequests     atomic.Int64
+	TotalErrors       atomic.Int64
+	MultipartCleanups atomic.Int64
+	root              string
 }
 
 // NewMetrics 创建 Metrics 实例。
@@ -26,10 +27,11 @@ func NewMetrics(root string) *Metrics {
 
 // metricsResponse 是 GET /_metrics 返回的 JSON 结构。
 type metricsResponse struct {
-	TotalRequests int64 `json:"total_requests"`
-	TotalErrors   int64 `json:"total_errors"`
-	BucketCount   int   `json:"bucket_count"`
-	StorageBytes  int64 `json:"storage_bytes"`
+	TotalRequests     int64 `json:"total_requests"`
+	TotalErrors       int64 `json:"total_errors"`
+	MultipartCleanups int64 `json:"multipart_cleanups"`
+	BucketCount       int   `json:"bucket_count"`
+	StorageBytes      int64 `json:"storage_bytes"`
 }
 
 // ServeHTTP 处理 GET /_metrics 请求。
@@ -42,10 +44,11 @@ func (m *Metrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	bucketCount, storageBytes := m.scanFilesystem()
 
 	resp := metricsResponse{
-		TotalRequests: m.TotalRequests.Load(),
-		TotalErrors:   m.TotalErrors.Load(),
-		BucketCount:   bucketCount,
-		StorageBytes:  storageBytes,
+		TotalRequests:     m.TotalRequests.Load(),
+		TotalErrors:       m.TotalErrors.Load(),
+		MultipartCleanups: m.MultipartCleanups.Load(),
+		BucketCount:       bucketCount,
+		StorageBytes:      storageBytes,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -121,17 +121,18 @@ src/
   service/                   # 业务层：ObjectMeta、原子读写、Content-Type 检测
   metrics/                   # 可观测性层：Metrics (atomic 计数 + 文件系统扫描)
   ec/                        # 纠删码层：GF256 有限域 + ReedSolomon 编解码器
-  storage/                   # 存储抽象层：StorageBackend + MultipartStorage 接口 + LocalBackend + ECBackend + DistributedBackend + ECDistributedBackend
+  storage/                   # 存储抽象层：StorageBackend + MultipartStorage 接口 + LocalBackend + ECBackend + DistributedBackend + ECDistributedBackend + TTLCleaner
   handler/                   # HTTP 层：BucketManager、ObjectManager、MultipartManager、router、middleware
 ```
 
 **Key types:**
-- `Config` (src/config) — port, root, access_key, secret_key, max_body_size (default 10MB), backend_type (default "local"), region, CORSConfig, ECConfig, DistributedConfig
+- `Config` (src/config) — port, root, access_key, secret_key, max_body_size (default 10MB), backend_type (default "local"), region, CORSConfig, ECConfig, DistributedConfig, MultipartTTLSeconds (default 86400), CleanupIntervalSec (default 3600)
 - `StorageBackend` (src/storage) — 存储后端接口，定义 Bucket/Object 的 CRUD 操作
 - `LocalBackend` (src/storage) — 基于本地文件系统的 StorageBackend 实现
 - `ECBackend` (src/storage) — 基于纠删码的 StorageBackend 实现，K 数据分片 + M 校验分片多磁盘分布
 - `DistributedBackend` (src/storage) — 分布式存储后端，一致性哈希 + Gossip + Quorum R/W
 - `ECDistributedBackend` (src/storage) — 分布式纠删码后端，RS 编码后分片分布到不同节点（非完整复制）
+- `TTLCleaner` (src/storage) — 后台 goroutine 定期扫描过期 multipart upload 并 AbortUpload 清理，通过 `onCleanup` 回调通知 metrics
 - `ConsistentHash` (src/hash) — Ketama 风格一致性哈希环，双哈希 FNV-1a + 虚拟节点
 - `GossipMembership` (src/cluster) — SWIM 简化版 Gossip 成员管理
 - `ReedSolomon` (src/ec) — Cauchy Reed-Solomon 编解码器（GF(2^8) 有限域算术）

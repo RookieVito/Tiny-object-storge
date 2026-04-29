@@ -101,12 +101,12 @@
 - [x] 替换 EC/Distributed 后端的 ErrNotImplemented stub
 - [x] 集成测试 `test/phase13.go`（EC + 分布式全流程）
 
-## Phase 14: TTL 自动清理 🔜
+## Phase 14: TTL 自动清理 ✅
 
-- [ ] **TTLCleaner**（src/storage/cleanup.go）— 后台 goroutine 定期扫描过期 upload
-- [ ] **Config** — MultipartTTLSeconds（默认 86400）、CleanupIntervalSec（默认 3600）
-- [ ] **Metrics** — 新增 MultipartCleanups 计数器
-- [ ] 集成测试 `test/phase14.go`
+- [x] **TTLCleaner**（src/storage/cleanup.go）— 后台 goroutine 定期扫描过期 upload
+- [x] **Config** — MultipartTTLSeconds（默认 86400）、CleanupIntervalSec（默认 3600）
+- [x] **Metrics** — 新增 MultipartCleanups 计数器
+- [x] 集成测试 `test/phase14.go`
 
 ## Phase 15: 对象版本控制 🔜
 
