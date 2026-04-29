@@ -121,7 +121,7 @@ src/
   service/                   # 业务层：ObjectMeta、原子读写、Content-Type 检测
   metrics/                   # 可观测性层：Metrics (atomic 计数 + 文件系统扫描)
   ec/                        # 纠删码层：GF256 有限域 + ReedSolomon 编解码器
-  storage/                   # 存储抽象层：StorageBackend + MultipartStorage 接口 + LocalBackend + ECBackend + DistributedBackend
+  storage/                   # 存储抽象层：StorageBackend + MultipartStorage 接口 + LocalBackend + ECBackend + DistributedBackend + ECDistributedBackend
   handler/                   # HTTP 层：BucketManager、ObjectManager、MultipartManager、router、middleware
 ```
 
@@ -131,6 +131,7 @@ src/
 - `LocalBackend` (src/storage) — 基于本地文件系统的 StorageBackend 实现
 - `ECBackend` (src/storage) — 基于纠删码的 StorageBackend 实现，K 数据分片 + M 校验分片多磁盘分布
 - `DistributedBackend` (src/storage) — 分布式存储后端，一致性哈希 + Gossip + Quorum R/W
+- `ECDistributedBackend` (src/storage) — 分布式纠删码后端，RS 编码后分片分布到不同节点（非完整复制）
 - `ConsistentHash` (src/hash) — Ketama 风格一致性哈希环，双哈希 FNV-1a + 虚拟节点
 - `GossipMembership` (src/cluster) — SWIM 简化版 Gossip 成员管理
 - `ReedSolomon` (src/ec) — Cauchy Reed-Solomon 编解码器（GF(2^8) 有限域算术）
@@ -173,6 +174,7 @@ src/
 **Disk layout (EC, multipart):** `disk-{i}/{bucket}/.uploads/{uploadId}/part-NNNN.bin` for each part's shard, `meta-root/{bucket}/.uploads/{uploadId}.upload-info` for upload metadata, `meta-root/{bucket}/.uploads/{uploadId}/part-NNNN.ec-meta` for per-part EC shard metadata. Per-part EC encoding; assembled and re-encoded on Complete.
 
 **Disk layout (distributed):** Each node uses LocalBackend layout; consistent hash ring determines which nodes store replicas.
+**Disk layout (EC distributed):** Each node uses LocalBackend layout. `{root}/{bucket}/.ec-shards/{key}#N` for shard data, `{root}/{bucket}/.ec-shard-meta/{key}#N` for per-shard metadata, `{root}/{bucket}/.ec-meta/{key}` for ECDistMeta (records ShardNodes mapping). Shard nodes determined by consistent hash at write time and stored in ECDistMeta; reads use stored mapping for degraded read support.
 
 ## Conventions
 

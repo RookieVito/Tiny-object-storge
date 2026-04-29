@@ -194,6 +194,7 @@ EC 元数据独立存储在一个可靠的磁盘上，记录原始大小、分�
 | `src/ec/galois.go` | GF(2^8) 有限域算术（exp/log 查找表） |
 | `src/ec/reedsolomon.go` | Cauchy Reed-Solomon 编解码器 |
 | `src/storage/ec.go` | ECBackend 存储后端（分片读写、降级读、MultipartStorage 实现） |
+| `src/storage/ec_distributed.go` | ECDistributedBackend 分布式纠删码后端（RS 编码分片分布到不同节点） |
 | `src/ec/reedsolomon_test.go` | 单元测试 |
 
 **关键类型：** `GF256`、`ReedSolomon`、`ECBackend`、`ECObjectMeta`

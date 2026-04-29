@@ -41,15 +41,18 @@ type LeaveRequest struct {
 
 // StorageRequest 节点间存储操作请求。
 type StorageRequest struct {
-	RequestID string            `json:"request_id"`
-	Operation string            `json:"operation"`
-	Bucket    string            `json:"bucket"`
-	Key       string            `json:"key,omitempty"`
-	Data      string            `json:"data,omitempty"` // base64 编码
-	Meta      *ObjectMetaMsg    `json:"meta,omitempty"`
-	UploadId  string            `json:"upload_id,omitempty"`
-	PartNumber int              `json:"part_number,omitempty"`
-	Parts      []PartInfoMsg     `json:"parts,omitempty"`
+	RequestID    string            `json:"request_id"`
+	Operation    string            `json:"operation"`
+	Bucket       string            `json:"bucket"`
+	Key          string            `json:"key,omitempty"`
+	Data         string            `json:"data,omitempty"` // base64 编码
+	Meta         *ObjectMetaMsg    `json:"meta,omitempty"`
+	UploadId     string            `json:"upload_id,omitempty"`
+	PartNumber   int               `json:"part_number,omitempty"`
+	Parts        []PartInfoMsg     `json:"parts,omitempty"`
+	ShardIndex   int               `json:"shard_index,omitempty"`
+	ShardSize    int               `json:"shard_size,omitempty"`
+	TotalShards  int               `json:"total_shards,omitempty"`
 }
 
 // PartInfoMsg 节点间传输的 part 元数据。

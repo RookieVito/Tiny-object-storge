@@ -125,6 +125,22 @@
 - [ ] **Metrics** — DiskHealth 状态、RebalancedObjects 计数
 - [ ] 集成测试 `test/phase16.go`
 
+## Phase 17: 分布式纠删码存储（EC over Distributed Nodes） ✅
+
+- [x] **ECDistributedBackend**（src/storage/ec_distributed.go）— 融合 EC 编码和分布式存储的新后端
+- [x] **ECDistMeta** — 记录分片到节点的映射（`ShardNodes`），支持故障后精确定位分片
+- [x] **PutObject** — RS.Encode → 一致性哈希选 K+M 节点 → 并发 RPC ec_put_shard → quorum 复制 ECDistMeta
+- [x] **GetObject** — 从 ECDistMeta 读取 ShardNodes → 并发 RPC ec_get_shard → RS.Decode 降级读
+- [x] **DeleteObject** — 从 ECDistMeta 读取分片节点 → 并发 RPC ec_delete_shard + ec_delete_meta
+- [x] **Bucket 操作** — CreateBucket/DeleteBucket RPC 广播，ListBuckets 合并去重
+- [x] **ListObjects** — 本地分片元数据过滤（仅 shard_index=0），合并去重
+- [x] **MultipartStorage** — coordinator 模式，UploadPart 本地存储，CompleteUpload 走 EC 分片流程
+- [x] **Cluster RPC** — 新增 ec_put_shard/ec_get_shard/ec_delete_shard/ec_put_meta/ec_get_meta/ec_delete_meta/ec_list_shards 操作
+- [x] **StorageRequest 扩展** — 新增 ShardIndex/ShardSize/TotalShards 字段
+- [x] **Transport 响应限制** — 从 1MB 提升到 64MB，支持大分片传输
+- [x] **配置** — `backend_type: "ec_distributed"`，合并 EC 和 Distributed 配置
+- [x] 集成测试 `test/phase17.go`（6 节点 4+2 配置，节点故障后读写，Multipart）
+
 ### 依赖关系
 
 ```
@@ -136,6 +152,7 @@ Phase 13 (EC/Dist Multipart)  → 依赖 Phase 5, 6, 8
 Phase 14 (TTL 清理)           → 依赖 Phase 8
 Phase 15 (版本控制)           → 建议在 9/13 之后
 Phase 16 (磁盘健康)           → 依赖 Phase 5
+Phase 17 (EC 分布式)          → 依赖 Phase 5, 6
 ```
 
 ## 参考文档

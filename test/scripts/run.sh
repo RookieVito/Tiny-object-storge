@@ -33,6 +33,8 @@ run_local_tests() {
     echo "========================================"
 
     cleanup
+    rm -rf "$ROOT/testdata/local"
+
     echo "==> Starting local server..."
     "$ROOT/server" --root "$ROOT/testdata/local" > /tmp/tos-local.log 2>&1 &
     SERVER_PIDS+=($!)

@@ -482,6 +482,16 @@ cmd/server/     ← handler, config, storage
 - [x] 替换 EC/Distributed 后端的 ErrNotImplemented stub
 - [x] 集成测试 `test/phase13.go`
 
+### Phase 17: 分布式纠删码存储 ✅
+- [x] **ECDistributedBackend**（src/storage/ec_distributed.go）— RS 编码后分片分布到不同节点，非完整复制
+- [x] **ECDistMeta** — 记录分片到节点的映射（`ShardNodes`），支持故障后精确定位分片
+- [x] **PutObject** — RS.Encode → 一致性哈希选 K+M 节点 → 并发 RPC `ec_put_shard` → quorum 复制元数据
+- [x] **GetObject** — 从元数据读取 `ShardNodes` → 并发 RPC `ec_get_shard` → RS.Decode 降级读
+- [x] **DeleteObject** — 从元数据读取分片节点 → 并发 RPC `ec_delete_shard` + `ec_delete_meta`
+- [x] **MultipartStorage** — coordinator 模式，CompleteUpload 走 EC 分片写入流程
+- [x] **配置** — `backend_type: "ec_distributed"`，合并 EC + Distributed 配置
+- [x] 集成测试 `test/phase17.go`（6 节点 4+2 EC，节点故障后读写）
+
 ### Future Enhancements (post-MVP)
 - Object versioning
 - 磁盘健康监控和自动 rebalance

@@ -58,7 +58,7 @@ func (t *Transport) postJSON(target NodeID, path string, req, resp any) error {
 	}
 	defer httpResp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(httpResp.Body, 1<<20)) // 限制 1MB
+	respBody, err := io.ReadAll(io.LimitReader(httpResp.Body, 64<<20)) // 限制 64MB
 	if err != nil {
 		return fmt.Errorf("read response from %s: %w", target, err)
 	}
@@ -120,7 +120,7 @@ func (t *Transport) GetMembers(target NodeID) ([]NodeInfo, error) {
 	}
 	defer httpResp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(httpResp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(httpResp.Body, 64<<20))
 	if err != nil {
 		return nil, err
 	}
