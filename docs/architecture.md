@@ -73,6 +73,8 @@ using the **Linux filesystem** as the storage backend. Zero external dependencie
 | **Transport** | cluster/transport.go | HTTP RPC 通信层（Ping/Join/Replicate） |
 | **DistributedBackend** | storage/distributed.go | Quorum R/W 分布式存储后端，coordinator 模式，replicas() 通过 AliveNodes 过滤 |
 | **TTLCleaner** | storage/cleanup.go | 后台 goroutine 定期扫描过期 multipart upload 并 AbortUpload 清理 |
+| **DiskHealthChecker** | storage/health.go | EC 磁盘健康检查，os.Stat 定期巡检，状态变更回调 |
+| **Rebalancer** | storage/rebalance.go | 磁盘恢复后自动扫描重建缺失分片 |
 | **VersionedBackend** | storage/versioning.go | 装饰器：为任意 StorageBackend 添加对象版本控制 |
 | **VersioningManager** | handler/versioning.go | Versioning HTTP handler（PutBucketVersioning/GetBucketVersioning/ListObjectVersions） |
 
@@ -338,8 +340,12 @@ tiny-object-storge/
 │   │   ├── local.go           # LocalBackend 本地文件系统实现
 │   │   ├── multipart.go       # LocalBackend MultipartStorage 实现
 │   │   ├── cleanup.go         # TTLCleaner 后台过期 multipart upload 清理
-│   │   ├── ec.go              # ECBackend 纠删码实现
-│   │   └── distributed.go     # DistributedBackend Quorum R/W 分布式实现
+│   │   ├── health.go          # DiskHealthChecker EC 磁盘健康检查
+│   │   ├── rebalance.go       # Rebalancer 磁盘恢复后自动重建缺失分片
+│   │   ├── ec.go              # ECBackend 纠删码实现（含 RepairObject、自修复）
+│   │   ├── versioning.go      # VersionedBackend 对象版本控制装饰器
+│   │   ├── distributed.go     # DistributedBackend Quorum R/W 分布式实现
+│   │   └── ec_distributed.go  # ECDistributedBackend 分布式纠删码实现
 │   └── handler/
 │       ├── router.go          # 路由注册 + middleware 链（HTTP 层）
 │       ├── bucket.go          # BucketManager（HTTP 层）
@@ -358,9 +364,14 @@ tiny-object-storge/
 │   ├── phase7.go              # Phase 7 客户端工具集成测试 (19)
 │   └── phase8.go              # Phase 8 Multipart Upload 集成测试 (32)
 │   ├── phase9.go              # Phase 9 Range 请求测试 (60)
-│   └── phase10.go             # Phase 10 Sig V4 认证测试 (15)
-│   └── phase11.go             # Phase 11 Presigned URL 测试 (20)
-│   └── phase12.go             # Phase 12 CORS 配置测试 (12)
+│   ├── phase10.go             # Phase 10 Sig V4 认证测试 (15)
+│   ├── phase11.go             # Phase 11 Presigned URL 测试 (20)
+│   ├── phase12.go             # Phase 12 CORS 配置测试 (12)
+│   ├── phase13.go             # Phase 13 EC/Distributed Multipart 测试
+│   ├── phase14.go             # Phase 14 TTL 自动清理测试 (16)
+│   ├── phase15.go             # Phase 15 对象版本控制测试 (47)
+│   ├── phase16.go             # Phase 16 磁盘健康监控和 Rebalance 测试 (23)
+│   └── phase17.go             # Phase 17 分布式纠删码测试
 ├── docs/
 │   ├── architecture.md
 │   ├── phase1-summary.md
@@ -510,6 +521,23 @@ cmd/server/     ← handler, config, storage
 - [x] context-based 优雅停止，首次启动立即清理，分页扫描，竞态容错
 - [x] 16 个集成测试（过期清理、未过期保留、metrics 计数、CompleteUpload 不受影响）
 
+### Phase 15: 对象版本控制 ✅
+- [x] **VersionedBackend 装饰器**（src/storage/versioning.go）— 包装任意 StorageBackend，后端无关版本存储
+- [x] **VersionedStorage 接口** — PutBucketVersioning/GetBucketVersioning/GetObjectVersion/HeadObjectVersion/DeleteObjectVersion/ListObjectVersions
+- [x] **Delete Marker** — 版本化 bucket 的 DeleteObject 创建 delete marker（零字节 + 哨兵）
+- [x] **版本路由** — `?versioning`、`?versions`、`?versionId` 路由分发
+- [x] 47 个集成测试
+
+### Phase 16: 磁盘健康监控和 Rebalance ✅
+- [x] **DiskHealthChecker**（src/storage/health.go）— 后台 goroutine 定期 os.Stat 巡检磁盘，互斥锁保护并发检查
+- [x] **Rebalancer**（src/storage/rebalance.go）— 磁盘恢复后自动扫描所有 EC 对象重建缺失分片，互斥锁防止并发
+- [x] **ReedSolomon.Reconstruct**（src/ec/reedsolomon.go）— 恢复所有 N 个分片（含 parity），用于主动修复
+- [x] **ECBackend.RepairObject**（src/storage/ec.go）— 主动修复指定对象缺失分片
+- [x] **GetObject 自修复升级** — 读取时缺失分片使用 Reconstruct 恢复全部分片（含 parity）
+- [x] **ECConfig** — HealthCheckIntervalSec（默认 60）
+- [x] **Metrics** — DiskHealthChecks、RebalancedObjects 计数器
+- [x] 23 个集成测试（健康检查、降级读、自修复、磁盘故障检测、恢复 Rebalance、多磁盘故障容忍）
+
 ### Phase 17: 分布式纠删码存储 ✅
 - [x] **ECDistributedBackend**（src/storage/ec_distributed.go）— RS 编码后分片分布到不同节点，非完整复制
 - [x] **ECDistMeta** — 记录分片到节点的映射（`ShardNodes`），支持故障后精确定位分片
@@ -521,4 +549,4 @@ cmd/server/     ← handler, config, storage
 - [x] 集成测试 `test/phase17.go`（6 节点 4+2 EC，节点故障后读写）
 
 ### Future Enhancements (post-MVP)
-- 磁盘健康监控和自动 rebalance
+- （磁盘健康监控和自动 rebalance 已在 Phase 16 实现）

@@ -156,6 +156,32 @@ func (rs *ReedSolomon) Decode(shards [][]byte, shardSize int) error {
 	return nil
 }
 
+// Reconstruct 从可用分片中恢复所有 N 个分片（包括 parity）。
+// 与 Decode 不同，Reconstruct 会填充 shards 中的所有 nil 位置。
+func (rs *ReedSolomon) Reconstruct(shards [][]byte, shardSize int) error {
+	if err := rs.Decode(shards, shardSize); err != nil {
+		return err
+	}
+	// 用恢复的数据分片重新编码缺失的 parity 分片。
+	for i := rs.dataShards; i < rs.totalShards; i++ {
+		if shards[i] != nil {
+			continue
+		}
+		shard := make([]byte, shardSize)
+		for j := 0; j < rs.dataShards; j++ {
+			coeff := rs.encMatrix[i][j]
+			if coeff == 0 {
+				continue
+			}
+			for k := 0; k < shardSize; k++ {
+				shard[k] ^= rs.gf.Mul(coeff, shards[j][k])
+			}
+		}
+		shards[i] = shard
+	}
+	return nil
+}
+
 // buildCauchyMatrix 构建 N×K 的 Cauchy 编码矩阵。
 // 选取两个不相交的集合 X（大小 N）和 Y（大小 K），
 // C[i][j] = 1 / (X[i] XOR Y[j])。

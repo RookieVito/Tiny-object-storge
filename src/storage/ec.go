@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -92,6 +93,101 @@ func (eb *ECBackend) AliveCount() int {
 		}
 	}
 	return count
+}
+
+// DiskPath 返回指定索引的磁盘路径。
+func (eb *ECBackend) DiskPath(index int) string {
+	if index < 0 || index >= len(eb.diskStates) {
+		return ""
+	}
+	return eb.diskStates[index].Path
+}
+
+// DataShards 返回数据分片数 K。
+func (eb *ECBackend) DataShards() int {
+	return eb.dataShards
+}
+
+// DiskCount 返回磁盘总数。
+func (eb *ECBackend) DiskCount() int {
+	return len(eb.diskStates)
+}
+
+// IsDiskAlive 返回指定索引的磁盘是否可用。
+func (eb *ECBackend) IsDiskAlive(index int) bool {
+	if index < 0 || index >= len(eb.diskStates) {
+		return false
+	}
+	return eb.diskStates[index].Alive
+}
+
+// RepairObject 主动修复指定对象的缺失分片。
+// 返回修复的分片数。无缺失返回 0，不可修复返回错误。
+func (eb *ECBackend) RepairObject(bucket, key string) (int, error) {
+	ecMeta, err := eb.readECMeta(bucket, key)
+	if err != nil {
+		return 0, err
+	}
+
+	shards := make([][]byte, eb.totalShards)
+	missingIndices := make([]int, 0)
+	aliveCount := 0
+
+	for i := 0; i < eb.totalShards && i < len(eb.disks); i++ {
+		if !eb.diskStates[i].Alive {
+			missingIndices = append(missingIndices, i)
+			continue
+		}
+		_, headErr := eb.disks[i].HeadObject(bucket, key)
+		if headErr != nil {
+			missingIndices = append(missingIndices, i)
+			continue
+		}
+		aliveCount++
+	}
+
+	if len(missingIndices) == 0 {
+		return 0, nil
+	}
+	if aliveCount < eb.dataShards {
+		return 0, s3error.ErrInsufficientStorage
+	}
+
+	for i := 0; i < eb.totalShards && i < len(eb.disks); i++ {
+		if shards[i] != nil || !eb.diskStates[i].Alive {
+			continue
+		}
+		data, _, err := eb.disks[i].GetObject(bucket, key)
+		if err != nil {
+			continue
+		}
+		shards[i] = data
+	}
+
+	if err := eb.rs.Reconstruct(shards, ecMeta.ShardSize); err != nil {
+		return 0, err
+	}
+
+	repaired := 0
+	for _, i := range missingIndices {
+		if i >= len(eb.disks) || !eb.diskStates[i].Alive || shards[i] == nil {
+			continue
+		}
+		shardMeta := &service.ObjectMeta{
+			Key:          key,
+			Size:         int64(len(shards[i])),
+			ETag:         ecMeta.ETag,
+			ContentType:  "application/octet-stream",
+			LastModified: ecMeta.LastModified,
+		}
+		if err := eb.disks[i].PutObject(bucket, key, shards[i], shardMeta); err != nil {
+			slog.Warn("repair: failed to write shard", "bucket", bucket, "key", key, "disk", i, "err", err)
+			continue
+		}
+		repaired++
+	}
+
+	return repaired, nil
 }
 
 func (eb *ECBackend) CreateBucket(bucket string) error {
@@ -216,8 +312,14 @@ func (eb *ECBackend) GetObject(bucket, key string) ([]byte, *service.ObjectMeta,
 
 	// 4. Reed-Solomon 解码恢复原始数据。
 	needsRepair := len(missingIndices) > 0
-	if err := eb.rs.Decode(shards, ecMeta.ShardSize); err != nil {
-		return nil, nil, err
+	if needsRepair {
+		if err := eb.rs.Reconstruct(shards, ecMeta.ShardSize); err != nil {
+			return nil, nil, err
+		}
+	} else {
+		if err := eb.rs.Decode(shards, ecMeta.ShardSize); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	// 5. 自修复：将缺失的分片写回对应磁盘。

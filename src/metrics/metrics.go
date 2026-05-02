@@ -17,6 +17,8 @@ type Metrics struct {
 	TotalRequests     atomic.Int64
 	TotalErrors       atomic.Int64
 	MultipartCleanups atomic.Int64
+	DiskHealthChecks  atomic.Int64
+	RebalancedObjects atomic.Int64
 	root              string
 }
 
@@ -30,6 +32,8 @@ type metricsResponse struct {
 	TotalRequests     int64 `json:"total_requests"`
 	TotalErrors       int64 `json:"total_errors"`
 	MultipartCleanups int64 `json:"multipart_cleanups"`
+	DiskHealthChecks  int64 `json:"disk_health_checks"`
+	RebalancedObjects int64 `json:"rebalanced_objects"`
 	BucketCount       int   `json:"bucket_count"`
 	StorageBytes      int64 `json:"storage_bytes"`
 }
@@ -47,6 +51,8 @@ func (m *Metrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		TotalRequests:     m.TotalRequests.Load(),
 		TotalErrors:       m.TotalErrors.Load(),
 		MultipartCleanups: m.MultipartCleanups.Load(),
+		DiskHealthChecks:  m.DiskHealthChecks.Load(),
+		RebalancedObjects: m.RebalancedObjects.Load(),
 		BucketCount:       bucketCount,
 		StorageBytes:      storageBytes,
 	}

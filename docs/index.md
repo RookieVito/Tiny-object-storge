@@ -45,6 +45,7 @@
 | [graceful-shutdown.md](technical/graceful-shutdown.md) | 信号处理、连接排空 |
 | [metrics.md](technical/metrics.md) | 原子计数器、`/_metrics` 端点 |
 | [per-bucket-locks.md](technical/per-bucket-locks.md) | 并发安全、per-bucket mutex |
+| [erasure-coding.md](technical/erasure-coding.md) | 磁盘健康检查、自修复、Rebalance（§4, §4.1） |
 
 ### 架构与使用
 | 文档 | 主题 |
@@ -66,6 +67,7 @@
 | **存储接口**（storage/） | `storage-backend-interface.md`, `architecture.md`§Package structure |
 | **元数据格式**（service/） | `metadata-sidecar.md`, `architecture.md`§Disk layout |
 | **EC 编解码**（ec/） | `erasure-coding.md`, `architecture.md`§Disk layout(EC) |
+| **磁盘健康/Rebalance**（storage/health, rebalance） | `erasure-coding.md`§4.1, `metrics.md`, `architecture.md` |
 | **分布式**（hash/, cluster/） | `consistent-hashing.md`, `gossip-protocol.md`, `quorum-read-write.md` |
 | **Multipart** | `multipart-upload.md`, `s3-protocol.md`, `architecture.md`§Disk layout(multipart) |
 | **版本控制**（storage/versioning） | `versioning.md`, `storage-backend-interface.md`, `architecture.md`§Disk layout, `metadata-sidecar.md` |
@@ -96,5 +98,6 @@
 | `versioning` | versioning.md, storage-backend-interface.md, architecture.md |
 | `security` | aws-sig-v2.md, path-traversal.md |
 | `storage` | storage-backend-interface.md, atomic-writes.md, metadata-sidecar.md, erasure-coding.md |
-| `observability` | metrics.md, middleware-chain.md |
+| `observability` | metrics.md, middleware-chain.md, erasure-coding.md |
+| `health` | erasure-coding.md |
 | `api` | s3-protocol.md, go-serve-mux.md, list-objects-v2.md |

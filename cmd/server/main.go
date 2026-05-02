@@ -55,6 +55,7 @@ func main() {
 
 	// 构造存储后端。
 	var backend storage.StorageBackend
+	var ecBackend *storage.ECBackend
 	switch cfg.BackendType {
 	case "local":
 		backend = storage.NewLocalBackend(absRoot)
@@ -93,7 +94,7 @@ func main() {
 			os.MkdirAll(d, 0755)
 		}
 		os.MkdirAll(absMetaRoot, 0755)
-		ecBackend, err := storage.NewECBackend(absDisks, absMetaRoot, k, m)
+		ecBackend, err = storage.NewECBackend(absDisks, absMetaRoot, k, m)
 		if err != nil {
 			log.Fatalf("failed to create EC backend: %v", err)
 		}
@@ -186,6 +187,27 @@ func main() {
 	if cleaner != nil {
 		cleaner.Start(cleanupCtx)
 		slog.Info("TTL cleaner started", "ttl_seconds", cfg.MultipartTTLSeconds, "interval_seconds", cfg.CleanupIntervalSec)
+	}
+
+	// 启动 EC 磁盘健康检查和 Rebalancer。
+	if ecBackend != nil {
+		healthInterval := time.Duration(cfg.EC.HealthCheckIntervalSec) * time.Second
+		if healthInterval == 0 {
+			healthInterval = 60 * time.Second
+		}
+		rebalancer := storage.NewRebalancer(ecBackend, func(count int64) {
+			m.RebalancedObjects.Add(count)
+		})
+		healthChecker := storage.NewDiskHealthChecker(ecBackend, healthInterval, func() {
+			m.DiskHealthChecks.Add(1)
+		}, func(diskIndex int, alive bool) {
+			slog.Info("disk state changed", "disk", ecBackend.DiskPath(diskIndex), "alive", alive)
+			if alive {
+				go rebalancer.Rebalance()
+			}
+		})
+		healthChecker.Start(cleanupCtx)
+		slog.Info("disk health checker started", "interval", healthInterval)
 	}
 
 	// 包装 VersionedBackend 装饰器，为所有后端添加对象版本控制。

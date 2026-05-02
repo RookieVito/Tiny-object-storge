@@ -120,13 +120,15 @@
 - [x] **磁盘布局** — `.versions/{safeKey}/{versionId}` 归档、`.dm-{versionId}` delete marker 编码、`.bucket-meta` 版本配置
 - [x] 集成测试 `test/phase15.go`（47 个）
 
-## Phase 16: 磁盘健康监控和 Rebalance 🔜
+## Phase 16: 磁盘健康监控和 Rebalance ✅
 
-- [ ] **DiskHealthChecker**（src/storage/health.go）— 后台 os.Stat 磁盘检查
-- [ ] **Rebalancer** — 磁盘状态变更回调，扫描并重建缺失分片
-- [ ] **ECConfig 扩展** — HealthCheckIntervalSec、HealthCheckMode
-- [ ] **Metrics** — DiskHealth 状态、RebalancedObjects 计数
-- [ ] 集成测试 `test/phase16.go`
+- [x] **DiskHealthChecker**（src/storage/health.go）— 后台 goroutine 定期 `os.Stat` 磁盘检查，互斥锁保护并发
+- [x] **Rebalancer**（src/storage/rebalance.go）— 磁盘恢复后自动扫描重建缺失分片，互斥锁防止并发 rebalance
+- [x] **ECConfig 扩展** — HealthCheckIntervalSec（默认 60）
+- [x] **Metrics** — DiskHealthChecks、RebalancedObjects 计数器
+- [x] **ReedSolomon.Reconstruct** — 恢复所有缺失分片（含 parity），用于主动修复
+- [x] **ECBackend.RepairObject** — 主动修复指定对象缺失分片
+- [x] 集成测试 `test/phase16.go`（23 个）
 
 ## Phase 17: 分布式纠删码存储（EC over Distributed Nodes） ✅
 

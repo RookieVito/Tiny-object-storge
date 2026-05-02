@@ -54,10 +54,11 @@ func (cc *CORSConfig) SetCORSDefaults() {
 
 // ECConfig 纠删码配置。
 type ECConfig struct {
-	Disks        []string `json:"disks"`          // N 个磁盘路径 (N >= K + M)
-	DataShards   int      `json:"data_shards"`    // K（默认 4）
-	ParityShards int      `json:"parity_shards"`  // M（默认 2）
-	MetaRoot     string   `json:"meta_root"`      // EC 元数据存储路径
+	Disks                  []string `json:"disks"`                     // N 个磁盘路径 (N >= K + M)
+	DataShards             int      `json:"data_shards"`               // K（默认 4）
+	ParityShards           int      `json:"parity_shards"`             // M（默认 2）
+	MetaRoot               string   `json:"meta_root"`                 // EC 元数据存储路径
+	HealthCheckIntervalSec int      `json:"health_check_interval_sec"` // 磁盘健康检查间隔（默认 60）
 }
 
 // DistributedConfig 分布式模式配置。

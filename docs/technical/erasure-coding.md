@@ -140,7 +140,7 @@ func (rs *ReedSolomon) Decode(shards [][]byte, shardSize int) error {
 func (eb *ECBackend) GetObject(bucket, key string) ([]byte, *ObjectMeta, error) {
     // 1. 从可用磁盘读取分片（缺失的标记为 nil）
     // 2. 检查可用分片数 >= K
-    // 3. Decode 恢复原始数据
+    // 3. Reconstruct 恢复所有分片（含 parity）
     // 4. 自修复：将恢复的分片写回故障磁盘
     if needsRepair {
         eb.repairShards(bucket, key, shards, missingIndices, ecMeta)
@@ -149,6 +149,40 @@ func (eb *ECBackend) GetObject(bucket, key string) ([]byte, *ObjectMeta, error) 
 ```
 
 修复是静默的——对用户透明，不影响读取结果。
+
+### Reconstruct vs Decode
+
+`Decode` 只恢复数据分片 `shards[0..K-1]`，parity 分片保持 `nil`。而 `Reconstruct` 在 Decode 之后，用恢复的数据分片重新计算所有缺失的 parity 分片：
+
+```go
+// src/ec/reedsolomon.go
+func (rs *ReedSolomon) Reconstruct(shards [][]byte, shardSize int) error {
+    rs.Decode(shards, shardSize)          // 恢复数据分片
+    // 重建缺失的 parity 分片
+    for i := rs.dataShards; i < rs.totalShards; i++ {
+        if shards[i] != nil { continue }
+        shard := make([]byte, shardSize)
+        for j := 0; j < rs.dataShards; j++ {
+            // 用编码矩阵计算 parity[i] = Σ encMatrix[i][j] * dataBlock[j]
+        }
+        shards[i] = shard
+    }
+}
+```
+
+GetObject 在需要修复时使用 `Reconstruct`（恢复全部分片），不需要修复时使用 `Decode`（仅恢复数据分片）。
+
+## 4.1 主动修复（RepairObject）
+
+除读取自修复外，还提供 `ECBackend.RepairObject(bucket, key)` 方法用于主动修复：
+
+1. 读取 ECObjectMeta
+2. 对每个磁盘检查分片存在性（`HeadObject`）
+3. 收集缺失分片索引，验证可用磁盘数 >= K
+4. 从可用磁盘读取分片 → `Reconstruct` 恢复全部分片
+5. 将缺失分片写回对应磁盘
+
+`RepairObject` 由 Rebalancer 在磁盘恢复后自动调用。
 
 ## 5. 磁盘布局
 
@@ -192,10 +226,12 @@ EC 元数据独立存储在一个可靠的磁盘上，记录原始大小、分�
 | 文件 | 说明 |
 |------|------|
 | `src/ec/galois.go` | GF(2^8) 有限域算术（exp/log 查找表） |
-| `src/ec/reedsolomon.go` | Cauchy Reed-Solomon 编解码器 |
-| `src/storage/ec.go` | ECBackend 存储后端（分片读写、降级读、MultipartStorage 实现） |
+| `src/ec/reedsolomon.go` | Cauchy Reed-Solomon 编解码器（Encode/Decode/Reconstruct） |
+| `src/storage/ec.go` | ECBackend 存储后端（分片读写、降级读、自修复、RepairObject） |
+| `src/storage/health.go` | DiskHealthChecker 磁盘健康检查 |
+| `src/storage/rebalance.go` | Rebalancer 磁盘恢复后自动重建缺失分片 |
 | `src/storage/ec_distributed.go` | ECDistributedBackend 分布式纠删码后端（RS 编码分片分布到不同节点） |
 | `src/ec/reedsolomon_test.go` | 单元测试 |
 
-**关键类型：** `GF256`、`ReedSolomon`、`ECBackend`、`ECObjectMeta`
-**关键函数：** `NewReedSolomon()`、`Encode()`、`Decode()`、`NewECBackend()`
+**关键类型：** `GF256`、`ReedSolomon`、`ECBackend`、`ECObjectMeta`、`DiskHealthChecker`、`Rebalancer`
+**关键函数：** `NewReedSolomon()`、`Encode()`、`Decode()`、`Reconstruct()`、`NewECBackend()`、`RepairObject()`
