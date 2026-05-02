@@ -59,11 +59,17 @@ func (h *DiskHealthChecker) run(ctx context.Context) {
 }
 
 // Check 执行一次磁盘健康检查，对比磁盘可访问性与当前状态。
-// 通过互斥锁保证同一时刻只有一个检查在执行。
-func (h *DiskHealthChecker) Check() {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+// 通过互斥锁保证同一时刻只有一个检查在执行，回调在锁外触发。
+type diskStateChange struct {
+	index int
+	alive bool
+	path  string
+}
 
+func (h *DiskHealthChecker) Check() {
+	var changes []diskStateChange
+
+	h.mu.Lock()
 	slog.Debug("disk health check: starting")
 	n := h.ecBackend.DiskCount()
 
@@ -82,9 +88,14 @@ func (h *DiskHealthChecker) Check() {
 			"disk_path", diskPath,
 			"alive", alive,
 		)
+		changes = append(changes, diskStateChange{index: i, alive: alive, path: diskPath})
+	}
+	h.mu.Unlock()
 
+	// 回调在锁外执行，避免潜在死锁。
+	for _, c := range changes {
 		if h.onStateChange != nil {
-			h.onStateChange(i, alive)
+			h.onStateChange(c.index, c.alive)
 		}
 	}
 
