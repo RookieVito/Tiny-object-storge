@@ -160,21 +160,35 @@ Phase 16 (磁盘健康)           → 依赖 Phase 5
 Phase 17 (EC 分布式)          → 依赖 Phase 5, 6
 ```
 
+## 未来工作（非 Phase 规划）
+
+以下是当前未覆盖但可进一步增强的方向，暂不纳入 Phase 计划：
+
+- **Web UI 版本控制** — Web UI 目前不支持 `?versionId` 和 `?versions` 操作（查看版本列表、下载指定版本、恢复历史版本、删除指定版本），需扩展前端 API 和交互组件
+- **CopyObject API** — S3 标准 `PUT /{bucket}/{key}` + `x-amz-copy-source` 头，实现服务端对象复制（同 bucket / 跨 bucket），避免下载→上传的开销
+- **对象生命周期策略** — 当前仅 multipart upload 有 TTL 自动清理；缺少对象级别的过期删除策略（如 `x-amz-expiration`、bucket 级 lifecycle rule：按前缀/天数自动删除或转低频）
+- **事件通知机制** — S3 Event Notification 风格的事件发布（如 ObjectCreated、ObjectRemoved、ObjectRestore），可对接 webhook / 消息队列，用于触发下游处理流水线
+
 ## 参考文档
 
 - 架构设计：`docs/architecture.md`
 - 使用指南：`docs/usage.md`
 - 技术参考：`docs/technical/`
-- Phase 1 总结：`docs/phase1-summary.md`
-- Phase 2 总结：`docs/phase2-summary.md`
-- Phase 3 总结：`docs/phase3-summary.md`
-- Phase 4 总结：`docs/phase4-summary.md`
-- Phase 5 总结：`docs/phase5-summary.md`
-- Phase 6 总结：`docs/phase6-summary.md`
-- Phase 7 总结：`docs/phase7-summary.md`
-- Phase 8 总结：`docs/phase8-summary.md`
-- Phase 9 总结：`docs/phase9-summary.md`
-- Phase 10 总结：`docs/phase10-summary.md`
-- Phase 11 总结：`docs/phase11-summary.md`
-- Phase 12 总结：`docs/phase12-summary.md`
+- Phase 1 总结：`docs/phases/phase1-summary.md`
+- Phase 2 总结：`docs/phases/phase2-summary.md`
+- Phase 3 总结：`docs/phases/phase3-summary.md`
+- Phase 4 总结：`docs/phases/phase4-summary.md`
+- Phase 5 总结：`docs/phases/phase5-summary.md`
+- Phase 6 总结：`docs/phases/phase6-summary.md`
+- Phase 7 总结：`docs/phases/phase7-summary.md`
+- Phase 8 总结：`docs/phases/phase8-summary.md`
+- Phase 9 总结：`docs/phases/phase9-summary.md`
+- Phase 10 总结：`docs/phases/phase10-summary.md`
+- Phase 11 总结：`docs/phases/phase11-summary.md`
+- Phase 12 总结：`docs/phases/phase12-summary.md`
+- Phase 13 总结：`docs/phases/phase13-summary.md`
+- Phase 14 总结：`docs/phases/phase14-summary.md`
+- Phase 15 总结：`docs/phases/phase15-summary.md`
+- Phase 16 总结：`docs/phases/phase16-summary.md`
+- Phase 17 总结：`docs/phases/phase17-summary.md`
 - 文档索引：`docs/index.md`
