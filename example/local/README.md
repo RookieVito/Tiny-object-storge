@@ -5,6 +5,25 @@
 ## 快速启动
 
 ```bash
+# 一键启动（后台运行，自动等待就绪）
+./example/local/start.sh start
+
+# 停止
+./example/local/start.sh stop
+
+# 重启
+./example/local/start.sh restart
+
+# 查看状态
+./example/local/start.sh status
+
+# 查看日志
+./example/local/start.sh log
+```
+
+手动启动：
+
+```bash
 # 方式 1：使用配置文件
 go run ./cmd/server/ --config ./example/local/config.json
 

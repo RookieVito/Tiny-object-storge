@@ -23,7 +23,24 @@
 
 > **重要**：必须启动**全部 3 个节点**后才能进行读写操作。分布式模式使用 Quorum 机制（W=2），至少 2 个节点在线才能写入。只启动 1 个节点时创建 Bucket 或上传文件会报错 `Failed to achieve write quorum`。
 
-依次启动 3 个节点（每个需要独立的终端）：
+```bash
+# 一键启动（后台运行 3 个节点，自动等待 Gossip 收敛）
+./example/distributed/start.sh start
+
+# 停止所有节点
+./example/distributed/start.sh stop
+
+# 重启
+./example/distributed/start.sh restart
+
+# 查看各节点状态
+./example/distributed/start.sh status
+
+# 查看指定节点日志（默认节点 1）
+./example/distributed/start.sh log 2
+```
+
+手动启动（每个需要独立的终端）：
 
 ```bash
 # 终端 1：种子节点（port 9001）

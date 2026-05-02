@@ -210,21 +210,24 @@ func main() {
 		slog.Info("disk health checker started", "interval", healthInterval)
 	}
 
-	// 包装 VersionedBackend 装饰器，为所有后端添加对象版本控制。
-	backend = storage.NewVersionedBackend(backend)
+	// 保存原始后端引用（VersionedBackend 包装前），用于关闭和集群 handler。
+	rawBackend := backend
 
-	// 分布式模式：获取集群 HTTP handler。
+	// 分布式模式：获取集群 HTTP handler（必须在 VersionedBackend 包装之前）。
 	var clusterHandler http.Handler
 	switch cfg.BackendType {
 	case "distributed":
-		if db, ok := backend.(*storage.DistributedBackend); ok {
+		if db, ok := rawBackend.(*storage.DistributedBackend); ok {
 			clusterHandler = db.MembershipHandler()
 		}
 	case "ec_distributed":
-		if db, ok := backend.(*storage.ECDistributedBackend); ok {
+		if db, ok := rawBackend.(*storage.ECDistributedBackend); ok {
 			clusterHandler = db.MembershipHandler()
 		}
 	}
+
+	// 包装 VersionedBackend 装饰器，为所有后端添加对象版本控制。
+	backend = storage.NewVersionedBackend(backend)
 
 	// Web UI 静态文件 handler（如果嵌入资源存在）。
 	var uiHandler http.Handler
@@ -248,11 +251,11 @@ func main() {
 		// 分布式模式：先离开集群。
 		switch cfg.BackendType {
 		case "distributed":
-			if db, ok := backend.(*storage.DistributedBackend); ok {
+			if db, ok := rawBackend.(*storage.DistributedBackend); ok {
 				db.Stop()
 			}
 		case "ec_distributed":
-			if db, ok := backend.(*storage.ECDistributedBackend); ok {
+			if db, ok := rawBackend.(*storage.ECDistributedBackend); ok {
 				db.Stop()
 			}
 		}

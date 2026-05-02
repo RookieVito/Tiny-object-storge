@@ -5,7 +5,25 @@
 ## 快速启动
 
 ```bash
-# 启动 EC 模式服务器
+# 一键启动（后台运行，自动等待就绪）
+./example/ec/start.sh start
+
+# 停止
+./example/ec/start.sh stop
+
+# 重启
+./example/ec/start.sh restart
+
+# 查看状态
+./example/ec/start.sh status
+
+# 查看日志
+./example/ec/start.sh log
+```
+
+手动启动：
+
+```bash
 go run ./cmd/server/ --config ./example/ec/config.json
 ```
 

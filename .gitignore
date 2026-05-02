@@ -1,12 +1,16 @@
 # 编译产物
 tiny-object-storage
 tiny-storage
-client
-server
+/client
+/server
 
 # 数据目录
 data/
 testdata/
+
+# Example 运行时产物
+example/*/logs/
+example/*/pids/
 
 # IDE
 .idea/

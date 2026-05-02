@@ -1,0 +1,19 @@
+{
+  "port": 9105,
+  "root": "./data/ec-node-5",
+  "access_key": "minioadmin",
+  "secret_key": "minioadmin",
+  "backend_type": "ec_distributed",
+  "ec": {
+    "data_shards": 4,
+    "parity_shards": 2
+  },
+  "distributed": {
+    "node_id": "localhost:9105",
+    "seed_nodes": ["localhost:9101"],
+    "replication_factor": 2,
+    "virtual_nodes": 500,
+    "gossip_interval_ms": 1000,
+    "rpc_timeout_ms": 3000
+  }
+}

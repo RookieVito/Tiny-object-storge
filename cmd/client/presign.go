@@ -18,7 +18,7 @@ func cmdPresign(args []string) {
 	fs.Parse(args)
 
 	if fs.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "usage: tiny-storage presign [flags] <bucket/key>")
+		fmt.Fprintln(os.Stderr, "usage: tiny-storage presign [flags] <s3://bucket/key>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
@@ -31,7 +31,7 @@ func cmdPresign(args []string) {
 		os.Exit(1)
 	}
 
-	target := fs.Arg(0)
+	target := strings.TrimPrefix(fs.Arg(0), "s3://")
 	resource := "/" + target
 
 	host := cfg.Endpoint

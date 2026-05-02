@@ -270,21 +270,17 @@ func (db *ECDistributedBackend) readECMeta(bucket, key string) (*ECDistMeta, err
 func (db *ECDistributedBackend) resolveECMeta(bucket, key string) *ECDistMeta {
 	// 优先从 meta 副本节点查找。
 	metaNodes := db.metaReplicaNodes(bucket + "/" + key)
-	slog.Debug("[ec-dist] resolveECMeta", "bucket", bucket, "key", key, "meta_nodes", metaNodes)
 	for _, nodeID := range metaNodes {
 		m, err := db.readECMetaFromNode(bucket, key, nodeID)
-		slog.Debug("[ec-dist] resolveECMeta meta node lookup", "node", nodeID, "err", err)
 		if err == nil {
 			return m
 		}
 	}
 	// 回退：从所有 alive 节点查找。
 	aliveNodes := db.membership.AliveNodes()
-	slog.Debug("[ec-dist] resolveECMeta fallback", "alive_count", len(aliveNodes))
 	for _, node := range aliveNodes {
 		nodeID := string(node.ID)
 		m, err := db.readECMetaFromNode(bucket, key, nodeID)
-		slog.Debug("[ec-dist] resolveECMeta alive node lookup", "node", nodeID, "err", err)
 		if err == nil {
 			return m
 		}
@@ -562,7 +558,6 @@ func (db *ECDistributedBackend) PutObject(bucket, key string, data []byte, meta 
 	shardNodeMap := make(map[int]string, totalShards)
 	for r := range resultCh {
 		if r.err != nil {
-			slog.Debug("[ec-dist] shard store failed", "shard", r.index, "node", r.nodeID, "err", r.err)
 		} else {
 			storedCount++
 			shardNodeMap[r.index] = r.nodeID
@@ -620,6 +615,7 @@ func (db *ECDistributedBackend) PutObject(bucket, key string, data []byte, meta 
 				Meta: &cluster.ObjectMetaMsg{
 					Key:          key,
 					ETag:         etag,
+						Size:         int64(len(ecMetaJSON)),
 					ContentType:  "application/json",
 					LastModified: now.Format(time.RFC3339Nano),
 				},
@@ -628,7 +624,6 @@ func (db *ECDistributedBackend) PutObject(bucket, key string, data []byte, meta 
 			if rpcErr == nil && resp.Status < 400 {
 				atomic.AddInt32(&metaStored, 1)
 			} else if rpcErr != nil {
-				slog.Debug("[ec-dist] meta store failed", "node", nodeID, "err", rpcErr)
 			}
 		}
 	}
@@ -720,7 +715,6 @@ func (db *ECDistributedBackend) GetObject(bucket, key string) ([]byte, *service.
 	fetchedCount := 0
 	for r := range resultCh {
 		if r.err != nil {
-			slog.Debug("[ec-dist] shard fetch failed", "shard", r.index, "err", r.err)
 			continue
 		}
 		if r.index < totalShards {
@@ -848,7 +842,6 @@ func (db *ECDistributedBackend) deleteShardLocal(bucket, key string, shardIndex 
 func (db *ECDistributedBackend) ListObjects(bucket, prefix, delimiter, startAfter string, maxKeys int) (
 	[]ObjectEntry, []string, string, bool, error,
 ) {
-	// 从所有存活节点收集 shard_meta（仅 shard_index=0 的条目代表一个完整对象）。
 	aliveNodes := db.membership.AliveNodes()
 	resultCh := make(chan []ObjectEntry, len(aliveNodes))
 	var wg sync.WaitGroup
@@ -958,34 +951,37 @@ func (db *ECDistributedBackend) ListObjects(bucket, prefix, delimiter, startAfte
 // listShardMetaEntries 从本地列举 shard_index=0 的分片元数据，作为对象列表。
 // 从 key 名（.ec-shard-meta/{objectKey}#{shardIndex}）解析 shard index，避免逐一读取文件内容。
 func (db *ECDistributedBackend) listShardMetaEntries(bucket, prefix, startAfter string) []ObjectEntry {
-	entries, _, _, _, err := db.local.ListObjects(bucket, ".ec-shard-meta/", "", "", 100000)
+	// 从本地 .ec-meta 构建对象列表（包含正确的 Size、LastModified、ETag）。
+	entries, _, _, _, err := db.local.ListObjects(bucket, ".ec-meta/", "", "", 100000)
 	if err != nil {
 		return nil
 	}
 
 	var objects []ObjectEntry
 	for _, e := range entries {
-		// key 格式: .ec-shard-meta/{objectKey}#{shardIndex}
-		relKey := strings.TrimPrefix(e.Key, ".ec-shard-meta/")
-		hashIdx := strings.LastIndex(relKey, "#")
-		if hashIdx < 0 {
-			continue
-		}
-		objectKey := relKey[:hashIdx]
-		// shardIndex == 0 代表该对象的一个完整条目。
-		if relKey[hashIdx+1:] != "0" {
-			continue
-		}
+		objectKey := strings.TrimPrefix(e.Key, ".ec-meta/")
 		if prefix != "" && !strings.HasPrefix(objectKey, prefix) {
 			continue
 		}
 		if startAfter != "" && objectKey <= startAfter {
 			continue
 		}
-		objects = append(objects, ObjectEntry{
+		entry := ObjectEntry{
 			Key:          objectKey,
 			LastModified: e.LastModified,
-		})
+			Size:         e.Size,
+			ETag:         e.ETag,
+		}
+		// 尝试从 ECDistMeta JSON 读取精确的原始大小和时间。
+		if data, _, readErr := db.local.GetObject(bucket, ".ec-meta/"+objectKey); readErr == nil {
+			var m ECDistMeta
+			if json.Unmarshal(data, &m) == nil {
+				entry.Size = m.OriginalSize
+				entry.LastModified = m.LastModified
+				entry.ETag = m.ETag
+			}
+		}
+		objects = append(objects, entry)
 	}
 	return objects
 }
