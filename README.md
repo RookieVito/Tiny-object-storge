@@ -96,25 +96,84 @@ go test ./src/cluster/...
 
 ## 架构
 
+### 请求流程
+
+```mermaid
+flowchart TB
+    Client["客户端<br/>CLI / Web UI / curl / SDK"]
+
+    subgraph Server["HTTP Server (net/http)"]
+        direction TB
+        subgraph MW["中间件层"]
+            S3["s3Middleware"] --> Log["logMiddleware"] --> CORS["CORSMiddleware"] --> Auth["authMiddleware<br/>Sig V4 + V2"]
+        end
+        subgraph Handlers["Handler 层"]
+            Router["Router"]
+            BM["BucketManager"]
+            OM["ObjectManager"]
+            MM["MultipartManager"]
+            VM["VersioningManager"]
+            Metrics["Metrics"]
+        end
+        subgraph Backend["StorageBackend"]
+            Local["LocalBackend"]
+            EC["ECBackend"]
+            Dist["DistributedBackend"]
+            ECDist["ECDistributedBackend"]
+            Ver["VersionedBackend"]
+        end
+    end
+
+    Client --> MW
+    MW --> Router
+    Router --> BM & OM & MM & VM & Metrics
+    BM & OM & MM & VM --> Backend
 ```
-客户端（CLI / Web UI / curl / SDK）
-         │
-         ▼
-    HTTP Server（net/http）
-    ┌─────────────────────────────────────────────────┐
-    │  s3Middleware → logMiddleware → CORS → auth      │
-    │  AWS Sig V4 + V2 认证 ｜ Presigned URL 验证     │
-    ├─────────────────────────────────────────────────┤
-    │  Router │ BucketManager │ ObjectManager │       │
-    │  MultipartManager │ VersioningManager │ Metrics  │
-    ├─────────────────────────────────────────────────┤
-    │  StorageBackend（接口）                          │
-    │  ┌─ LocalBackend ────────────────────────────┐  │
-    │  ├─ ECBackend（Reed-Solomon 纠删码）        ─┤  │
-    │  ├─ DistributedBackend（Gossip + Quorum）  ──┤  │
-    │  ├─ ECDistributedBackend（EC + 分布式）   ───┤  │
-    │  └─ VersionedBackend（版本控制装饰器）     ───┘  │
-    └─────────────────────────────────────────────────┘
+
+### 存储后端
+
+```mermaid
+flowchart TB
+    Interface["StorageBackend 接口"]
+    Interface --> Ver
+    Ver --> Local
+    Ver --> EC
+    Ver --> Dist
+    Ver --> ECDist
+
+    subgraph Local["LocalBackend"]
+        direction TB
+        PM["PathMapper"] -->|"路径映射"| FS["文件系统"]
+        FS --> AW["原子写入"]
+    end
+
+    subgraph EC["ECBackend"]
+        direction TB
+        RS["Reed-Solomon"] -->|"K+M 分片"| Disks["disk-0 ··· disk-N"]
+        Disks -->|"状态回调"| HC["HealthChecker"]
+        HC -->|"触发重建"| RB["Rebalancer"]
+    end
+
+    subgraph Dist["DistributedBackend"]
+        direction TB
+        GO["Gossip"] -->|"节点列表"| CH["ConsistentHash"]
+        CH -->|"节点选择"| QR["Quorum R/W"]
+        QR -->|"RPC"| Nodes["Node 1 ··· Node N"]
+    end
+
+    subgraph ECDist["ECDistributedBackend"]
+        direction TB
+        RS2["RS 编码"] -->|"分片"| CH2["ConsistentHash"]
+        CH2 -->|"分发"| ECNodes["各节点"]
+        ECNodes <-->|"映射·降级读"| Meta["ECDistMeta"]
+    end
+
+    subgraph Ver["VersionedBackend"]
+        direction TB
+        VWrap["装饰器"] -->|"委托"| Inner["任意后端"]
+        VWrap -->|"归档"| Archive["版本历史"]
+        VWrap -->|"标记"| DM["Delete Marker"]
+    end
 ```
 
 请求流程：`s3Middleware`（Server/Date 头、panic 恢复）→ `logMiddleware`（slog JSON 日志 + 指标计数）→ `CORSMiddleware`（origin 匹配、preflight）→ `authMiddleware`（AWS Sig V4 + V2）→ `ServeMux`（方法+路径路由）→ Handler → `StorageBackend`
